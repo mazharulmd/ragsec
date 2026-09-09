@@ -1,0 +1,13 @@
+name: baseline_no_defense
+dataset: {name: toy}
+embedder: {name: hashing, dim: 512}
+llm: {name: mock, follow_injections: true}
+pipeline: {top_k: 3, candidate_multiplier: 3}
+seed: 0
+output_dir: results
+attacks:
+  - {name: poisoned_rag, n_per_target: 1}
+  - {name: trigger_backdoor, n_per_target: 1}
+  - {name: prompt_injection, n_per_target: 1}
+  - {name: context_flooding, n_per_target: 5}
+defenses: []

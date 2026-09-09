@@ -1,0 +1,20 @@
+name: ablation_l1_source_verification
+dataset: {name: toy}
+embedder: {name: hashing, dim: 512}
+llm: {name: mock, follow_injections: true}
+pipeline: {top_k: 3, candidate_multiplier: 3}
+seed: 0
+output_dir: results
+attacks:
+  - {name: poisoned_rag, n_per_target: 1}
+  - {name: trigger_backdoor, n_per_target: 1}
+  - {name: prompt_injection, n_per_target: 1}
+  - {name: context_flooding, n_per_target: 5}
+defenses:
+  # Strict write policy: only the curated source may write, and each source is quota-limited.
+  - name: source_verification
+    params:
+      allowed_sources: [curated-encyclopedia]
+      source_trust: {curated-encyclopedia: 0.8}
+      min_trust: 0.6
+      max_documents_per_source: 100

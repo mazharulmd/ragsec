@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ragsec"
+version = "0.1.0"
+description = "RAG security research framework: knowledge-base poisoning attacks and multi-layer defenses for retrieval-augmented generation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Mazharul Islam" }]
+dependencies = [
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+embeddings = ["sentence-transformers>=2.2"]
+faiss = ["faiss-cpu>=1.7"]
+datasets = ["datasets>=2.14"]
+dev = ["pytest>=7.0", "ruff>=0.4"]
+
+[project.scripts]
+ragsec = "ragsec.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ragsec*"]
+
+[tool.setuptools.package-data]
+ragsec = ["eval/resources/*.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,32 @@
+image: python:3.11-slim
+
+stages:
+  - lint
+  - test
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  # Use the offline hashing embedder in CI so no model downloads are required.
+  RAGSEC_EMBEDDER: "hashing"
+
+cache:
+  key: pip-$CI_COMMIT_REF_SLUG
+  paths:
+    - .cache/pip
+
+.python-setup:
+  before_script:
+    - pip install --upgrade pip
+    - pip install -e ".[dev]"
+
+lint:
+  stage: lint
+  extends: .python-setup
+  script:
+    - ruff check .
+
+test:
+  stage: test
+  extends: .python-setup
+  script:
+    - pytest
