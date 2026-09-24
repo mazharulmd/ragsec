@@ -9,6 +9,27 @@ venv/
 .cache/
 .pytest_cache/
 .ruff_cache/
-results/
+results/*
+# The paper's raw result records are the evidence behind every reported number, and are
+# small enough to version alongside the manuscript that cites them.
+!results/paper/
 *.faiss
 .DS_Store
+
+# Build artefact: the submission folder is versioned, the zip of it is not.
+RAG Security Paper.zip
+
+# MDPI's LaTeX class, bibliography styles and logos are their copyright and are not
+# redistributed here. Download the Information template from the journal's author pages
+# and drop its Definitions/ directory into "RAG Security Paper/" to compile.
+RAG Security Paper/Definitions/
+
+# LaTeX build products
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk

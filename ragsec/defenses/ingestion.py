@@ -14,7 +14,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ragsec.core.defense import DefenseLayer
-from ragsec.core.models import Document
+from ragsec.core.models import Document, content_hash
 
 
 def sign_document(text: str, key: bytes) -> str:
@@ -47,6 +47,8 @@ class SourceVerificationLayer(DefenseLayer):
         self.min_trust = min_trust
         self.hmac_key = hmac_key
         self.require_signature = require_signature
+        if require_signature and hmac_key is None:
+            raise ValueError("hmac_key is required when require_signature is enabled")
         self.dedupe = dedupe
         self.max_documents_per_source = max_documents_per_source
         self.rejections: list[IngestRejection] = []
@@ -63,7 +65,7 @@ class SourceVerificationLayer(DefenseLayer):
             if reason is not None:
                 self.rejections.append(IngestRejection(doc.doc_id, source, reason))
                 continue
-            self._seen_hashes.add(doc.content_hash)
+            self._seen_hashes.add(content_hash(doc.text))
             self._per_source[source] += 1
             accepted.append(doc)
         return accepted
@@ -82,7 +84,7 @@ class SourceVerificationLayer(DefenseLayer):
             signature, sign_document(doc.text, self.hmac_key)
         ):
             return "invalid signature"
-        if self.dedupe and doc.content_hash in self._seen_hashes:
+        if self.dedupe and content_hash(doc.text) in self._seen_hashes:
             return "duplicate content"
         if (
             self.max_documents_per_source is not None

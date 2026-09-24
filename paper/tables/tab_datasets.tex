@@ -1,0 +1,13 @@
+\begin{table}[H]
+\small
+\caption{Evaluation corpora. The document-to-question ratio indicates how much topically adjacent but non-answering material a retriever must sort through; HotpotQA contributes its distractor paragraphs, which is why its ratio is high.\label{tab:datasets}}
+\begin{tabular}{lrrrrl}
+\toprule
+\textbf{Dataset} & \textbf{Documents} & \textbf{Questions} & \textbf{Mean words/doc} & \textbf{Docs/question} & \textbf{Source id}\\
+\midrule
+SQuAD & 300 & 300 & 100 & 1.0 & huggingface\\
+HotpotQA & 1999 & 200 & 91 & 10.0 & hotpotqa\\
+Toy corpus & 30 & 30 & 15 & 1.0 & curated-encyclopedia\\
+\bottomrule
+\end{tabular}
+\end{table}

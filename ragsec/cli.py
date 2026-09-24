@@ -132,6 +132,61 @@ def cmd_monitor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_suite(args: argparse.Namespace) -> int:
+    from ragsec.eval.suite import STUDIES, run_suite
+
+    rows = run_suite(
+        studies=args.studies or None,
+        datasets=args.datasets or None,
+        seeds=args.seeds or None,
+        output_dir=args.output_dir,
+        resume=not args.no_resume,
+    )
+    for study in args.studies or list(STUDIES):
+        print(f"{study}: {len(rows.get(study, []))} rows -> {args.output_dir}/{study}.jsonl")
+    return 0
+
+
+def cmd_figures(args: argparse.Namespace) -> int:
+    from ragsec.eval.report import build_report
+    from ragsec.eval.texcheck import check_manuscript
+
+    output_dir = Path(args.output_dir)
+    written = build_report(Path(args.results_dir), output_dir)
+    for path in written:
+        print(path)
+    if args.no_check:
+        return 0
+    root = Path(args.manuscript).parent
+    sources = [
+        Path(args.manuscript),
+        output_dir / "body.tex",
+        *sorted((output_dir / "tables").glob("*.tex")),
+    ]
+    report = check_manuscript(sources, root, output_dir, output_dir / "bibliography.tex")
+    for problem in report.problems:
+        print(f"  manuscript: {problem}")
+    if args.strict:
+        for warning in report.warnings:
+            print(f"  manuscript (minor): {warning}")
+    # A partially-run suite legitimately leaves tables and figures missing, so this reports
+    # rather than fails unless the caller asked for strictness.
+    return 1 if (args.strict and report.problems) else 0
+
+
+def cmd_manuscript(args: argparse.Namespace) -> int:
+    from ragsec.eval.manuscript import build
+
+    summary = build(Path(args.project_root), Path(args.output), journal=args.journal)
+    print(f"wrote {args.output}")
+    for key, value in summary.items():
+        print(f"  {key}: {value}")
+    if summary["em_dashes"]:
+        print("  WARNING: em dashes present; this journal style forbids them")
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ragsec", description="RAG poisoning attacks and defenses research toolkit"
@@ -168,6 +223,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_mon.add_argument("--attack", default="context_flooding", choices=sorted(ATTACK_REGISTRY))
     p_mon.add_argument("-n", type=int, default=3)
     p_mon.set_defaults(func=cmd_monitor)
+
+    p_suite = sub.add_parser("suite", help="run the full experiment suite reported in the paper")
+    p_suite.add_argument("--studies", nargs="*", default=[], help="subset of studies to run")
+    p_suite.add_argument("--datasets", nargs="*", default=[], help="subset of datasets")
+    p_suite.add_argument("--seeds", nargs="*", type=int, default=[], help="random seeds")
+    p_suite.add_argument("--output-dir", default="results/paper")
+    p_suite.add_argument("--no-resume", action="store_true", help="recompute finished cells")
+    p_suite.set_defaults(func=cmd_suite)
+
+    p_fig = sub.add_parser("figures", help="build the paper's tables and figures from results")
+    p_fig.add_argument("--results-dir", default="results/paper")
+    p_fig.add_argument("--output-dir", default="paper")
+    p_fig.add_argument("--manuscript", default="paper/preview.tex")
+    p_fig.add_argument("--no-check", action="store_true", help="skip the manuscript checks")
+    p_fig.add_argument(
+        "--strict", action="store_true", help="also report minor findings and exit non-zero"
+    )
+    p_fig.set_defaults(func=cmd_figures)
+
+    p_ms = sub.add_parser(
+        "manuscript", help="assemble the single self-contained MDPI submission .tex"
+    )
+    p_ms.add_argument("--project-root", default=".")
+    p_ms.add_argument("--output", default="RAG Security Paper/template.tex")
+    p_ms.add_argument("--journal", default="information")
+    p_ms.set_defaults(func=cmd_manuscript)
     return parser
 
 

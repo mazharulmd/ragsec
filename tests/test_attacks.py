@@ -41,6 +41,7 @@ def test_registry_and_factory() -> None:
         "trigger_backdoor",
         "prompt_injection",
         "context_flooding",
+        "adaptive_poison",
     }
     assert isinstance(get_attack("poisoned_rag"), PoisonedRAGAttack)
 

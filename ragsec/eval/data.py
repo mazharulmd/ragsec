@@ -69,7 +69,7 @@ def load_json_dataset(path: str | Path, source_id: str = "local-file") -> Datase
 
 
 def load_hf_dataset(
-    path: str = "squad",
+    path: str = "rajpurkar/squad",
     split: str = "validation",
     limit: int = 200,
     source_id: str = "huggingface",
@@ -106,8 +106,82 @@ def load_hf_dataset(
     return _from_records(path, records, source_id)
 
 
+def load_hotpotqa_dataset(
+    config: str = "distractor",
+    split: str = "validation",
+    limit: int = 300,
+    source_id: str = "hotpotqa",
+    include_distractors: bool = True,
+    skip_yes_no: bool = True,
+) -> Dataset:
+    """Load HotpotQA as a document collection.
+
+    Each question contributes its supporting paragraphs, and (by default) the distractor
+    paragraphs shipped with the ``distractor`` configuration. The distractors matter here:
+    they give the corpus realistic near-miss content, so a retrieval filter cannot obtain a
+    low false-positive rate simply because every non-poison passage is topically unrelated.
+    """
+    try:
+        from datasets import load_dataset as hf_load_dataset
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise ImportError("Install the optional extra: pip install 'ragsec[datasets]'") from exc
+
+    rows = hf_load_dataset("hotpotqa/hotpot_qa", config, split=split)
+    records: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    n_questions = 0
+    for row in rows:
+        if n_questions >= limit:
+            break
+        answer = str(row["answer"]).strip()
+        # Yes/no answers are unusable under the lenient substring criterion: "yes" occurs
+        # inside unrelated text, and no decoy answer can be constructed for them.
+        if skip_yes_no and answer.lower() in {"yes", "no"}:
+            continue
+        if len(answer) < 3:
+            continue
+        supporting = {str(t) for t in row["supporting_facts"]["title"]}
+        titles = list(row["context"]["title"])
+        sentences = list(row["context"]["sentences"])
+        gold_doc_id: str | None = None
+        pending: list[dict[str, Any]] = []
+        for title, sents in zip(titles, sentences, strict=False):
+            is_support = title in supporting
+            if not include_distractors and not is_support:
+                continue
+            if title in seen_titles:
+                if is_support and gold_doc_id is None:
+                    gold_doc_id = f"hotpot-{title}"
+                continue
+            text = " ".join(str(x).strip() for x in sents).strip()
+            if not text:
+                continue
+            seen_titles.add(title)
+            doc_id = f"hotpot-{title}"
+            if is_support and gold_doc_id is None:
+                gold_doc_id = doc_id
+            pending.append({"id": doc_id, "title": title, "text": text})
+        if gold_doc_id is None or not answer:
+            continue
+        # Attach the question to whichever supporting paragraph is being emitted (or, when it
+        # was already emitted for an earlier question, to the first new paragraph) so that
+        # every QA pair has an answerable document in the index.
+        for record in pending:
+            if record["id"] == gold_doc_id:
+                record["question"] = row["question"]
+                record["answer"] = answer
+                break
+        else:
+            records.append({"id": f"{gold_doc_id}#q{n_questions}", "title": "", "text": "",
+                            "question": row["question"], "answer": answer})
+        records.extend(pending)
+        n_questions += 1
+    records = [r for r in records if r["text"] or r.get("question")]
+    return _from_records("hotpotqa", records, source_id)
+
+
 def load_dataset(spec: dict[str, Any] | None = None) -> Dataset:
-    """Dispatch on ``spec["name"]``: ``toy`` (default), ``json`` or ``hf``."""
+    """Dispatch on ``spec["name"]``: ``toy`` (default), ``json``, ``hf`` or ``hotpotqa``."""
     spec = dict(spec or {"name": "toy"})
     name = spec.pop("name", "toy")
     if name == "toy":
@@ -116,4 +190,8 @@ def load_dataset(spec: dict[str, Any] | None = None) -> Dataset:
         return load_json_dataset(**spec)
     if name == "hf":
         return load_hf_dataset(**spec)
-    raise ValueError(f"Unknown dataset {name!r}; expected 'toy', 'json' or 'hf'")
+    if name in {"hotpot", "hotpotqa"}:
+        return load_hotpotqa_dataset(**spec)
+    raise ValueError(
+        f"Unknown dataset {name!r}; expected 'toy', 'json', 'hf' or 'hotpotqa'"
+    )

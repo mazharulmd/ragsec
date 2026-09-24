@@ -19,6 +19,7 @@ dependencies = [
 embeddings = ["sentence-transformers>=2.2"]
 faiss = ["faiss-cpu>=1.7"]
 datasets = ["datasets>=2.14"]
+paper = ["matplotlib>=3.7"]
 dev = ["pytest>=7.0", "ruff>=0.4"]
 
 [project.scripts]

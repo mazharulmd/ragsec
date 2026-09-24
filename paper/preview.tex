@@ -1,0 +1,64 @@
+%% Local preview of the manuscript, for reading and proofing without the MDPI template.
+%%
+%%     cd paper && pdflatex preview.tex && pdflatex preview.tex
+%%
+%% The submission version is ../manuscript.tex, which uses the MDPI class. Both compile the
+%% same body.tex, so this file is only a stand-in preamble: do not submit it.
+
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{changepage}   %% MDPI class provides adjustwidth
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage[numbers,sort&compress]{natbib}
+
+%% MDPI class provides these; stub them for the article class.
+\providecommand{\extralength}{0pt}
+\newcommand{\ANDNAME}{and}
+\newcommand{\paperdir}{}
+
+\title{RAG Security and Poisoning Attack Defense in LLM-Based Systems:\\
+A Layered Architecture and Its Limits Under an Adaptive Adversary}
+\author{Mazharul Islam}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Retrieval-augmented generation (RAG) moves part of a language model's trust boundary out of its
+weights and into a document pipeline, exposing deployments to knowledge-base poisoning,
+indirect prompt injection, trigger backdoors and retrieval flooding. We present an instrumented
+RAG framework with a four-layer defense---ingestion-time source verification, calibrated
+retrieval filtering, provenance-weighted robust aggregation and anomaly monitoring---in which
+each layer can be enabled independently, and evaluate it on SQuAD, HotpotQA and a bundled
+corpus with a sentence-transformer retriever across seven configurations, five attacks and
+three seeds. Against four static attacks reproduced from the literature, the layered defense
+performs as that literature would predict. We then introduce a defense-aware adaptive adversary
+composed of six independently switchable evasion techniques. Against it, the same stack fails:
+the retrieval filter's true-positive rate falls to zero and its AUROC to chance, and robust
+aggregation actively increases attack success because the adversary supplies the corroboration
+its redundancy weighting rewards. A leave-one-out ablation attributes the failure to exactly
+three of the six techniques, each a cheap rewriting choice, and a budget sweep prices the attack
+at two documents per target. No detector threshold serves both adversaries. Binding ingestion to
+an unforgeable HMAC signature restores the defense at no cost to clean accuracy, and is the only
+control in our study that survives.
+\end{abstract}
+
+\input{body}
+
+\bibliographystyle{unsrtnat}
+\input{bibliography}
+
+\end{document}

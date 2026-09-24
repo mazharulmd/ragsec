@@ -105,6 +105,15 @@ def test_source_verification_trust_registry_and_dedupe() -> None:
     assert reasons == {"untrusted source": 2, "duplicate content": 1}
 
 
+def test_source_verification_recomputes_hash_for_dedupe() -> None:
+    layer = SourceVerificationLayer()
+    original = Document(text="same content")
+    forged_hash = Document(text="same content", content_hash="not-the-content-hash")
+
+    assert layer.on_ingest([original, forged_hash]) == [original]
+    assert layer.rejections[0].reason == "duplicate content"
+
+
 def test_source_verification_allowlist_and_quota() -> None:
     layer = SourceVerificationLayer(
         allowed_sources={"community-upload"}, max_documents_per_source=2
@@ -125,6 +134,11 @@ def test_source_verification_signatures() -> None:
     missing = Document(text="unsigned")
     assert layer.on_ingest([good, bad, missing]) == [good]
     assert {r.reason for r in layer.rejections} == {"invalid signature", "missing signature"}
+
+
+def test_source_verification_requires_key_for_required_signatures() -> None:
+    with pytest.raises(ValueError, match="hmac_key"):
+        SourceVerificationLayer(require_signature=True)
 
 
 # Layer 2 filters

@@ -86,6 +86,7 @@ class RobustAggregationLayer(DefenseLayer):
         self.abstain_answer = abstain_answer
         self.last_groups: list[tuple[float, AnswerGroup]] = []
         self.last_isolated: list[IsolatedAnswer] = []
+        self.selected_chunk_ids: tuple[str, ...] = ()
 
     @staticmethod
     def is_abstention(answer: str) -> bool:
@@ -141,6 +142,7 @@ class RobustAggregationLayer(DefenseLayer):
         if not retrieved:
             return None
         self.last_isolated = self._isolate(query, retrieved, llm)
+        self.selected_chunk_ids = ()
         groups = self._group(self.last_isolated)
         ranked = sorted(
             ((g.total_weight(self.redundancy_bonus), g) for g in groups),
@@ -155,4 +157,7 @@ class RobustAggregationLayer(DefenseLayer):
             return self.abstain_answer
         if len(ranked) > 1 and top_weight < self.margin * ranked[1][0]:
             return self.abstain_answer
+        self.selected_chunk_ids = tuple(
+            member.chunk.chunk.chunk_id for member in top_group.members
+        )
         return top_group.representative.text

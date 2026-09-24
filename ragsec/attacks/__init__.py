@@ -1,5 +1,6 @@
 """Knowledge-base poisoning attacks used to benchmark defenses."""
 
+from ragsec.attacks.adaptive import AdaptivePoisonAttack
 from ragsec.attacks.base import Attack, AttackTarget, content_keywords, strip_question
 from ragsec.attacks.flooding import ContextFloodingAttack
 from ragsec.attacks.injection import PromptInjectionAttack
@@ -8,6 +9,7 @@ from ragsec.attacks.trigger_backdoor import TriggerBackdoorAttack
 
 ATTACK_REGISTRY: dict[str, type[Attack]] = {
     PoisonedRAGAttack.name: PoisonedRAGAttack,
+    AdaptivePoisonAttack.name: AdaptivePoisonAttack,
     TriggerBackdoorAttack.name: TriggerBackdoorAttack,
     PromptInjectionAttack.name: PromptInjectionAttack,
     ContextFloodingAttack.name: ContextFloodingAttack,
@@ -24,6 +26,7 @@ def get_attack(name: str, **kwargs: object) -> Attack:
 
 __all__ = [
     "ATTACK_REGISTRY",
+    "AdaptivePoisonAttack",
     "Attack",
     "AttackTarget",
     "ContextFloodingAttack",

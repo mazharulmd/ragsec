@@ -75,6 +75,27 @@ class Attack(ABC):
         """Whether ``answer`` indicates the attack achieved its goal."""
         return target.target_answer.lower() in answer.lower()
 
+    def bind_corpus(self, source_id: str) -> None:
+        """Tell the attack which source the legitimate corpus is published under.
+
+        Only defense-aware attacks use this. It encodes the assumption that an adversary can
+        read the deployment they are attacking: the name of a trusted connector is not secret,
+        so an allowlist that is not bound to a signature provides no real barrier.
+        """
+        return None
+
+    def source_for(self, variant: int) -> tuple[str, float]:
+        """Source identity and claimed trust for the ``variant``-th passage.
+
+        Defense-aware attacks override this to spoof provenance or to fake independence
+        between passages; static attacks upload everything from one untrusted source.
+        """
+        return self.source_id, self.trust_score
+
+    def poison_metadata(self, target: AttackTarget, variant: int) -> dict[str, object]:
+        """Extra evaluation-only metadata attached to the poisoned document."""
+        return {}
+
     def generate_poison(
         self, targets: Sequence[AttackTarget], n_per_target: int = 1
     ) -> list[Document]:
@@ -83,12 +104,13 @@ class Attack(ABC):
         documents: list[Document] = []
         for target in targets:
             for variant in range(n_per_target):
+                source_id, trust_score = self.source_for(variant)
                 documents.append(
                     Document(
                         text=self.craft(target, variant),
                         provenance=Provenance(
-                            source_id=self.source_id,
-                            trust_score=self.trust_score,
+                            source_id=source_id,
+                            trust_score=trust_score,
                             author=self.author,
                         ),
                         metadata={
@@ -97,6 +119,7 @@ class Attack(ABC):
                             "target_query": target.query,
                             "target_answer": target.target_answer,
                             "variant": variant,
+                            **self.poison_metadata(target, variant),
                         },
                     )
                 )

@@ -3,6 +3,7 @@ image: python:3.11-slim
 stages:
   - lint
   - test
+  - paper
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
@@ -30,3 +31,18 @@ test:
   extends: .python-setup
   script:
     - pytest
+
+# Regenerates the manuscript's tables and figures from the committed result records and
+# cross-checks them against the manuscript: an undefined reference, a missing figure or a
+# result macro the text quotes but no study produced fails the build.
+paper:
+  stage: paper
+  extends: .python-setup
+  script:
+    - pip install -e ".[paper]"
+    - ragsec figures --strict
+  artifacts:
+    paths:
+      - paper/figures/
+      - paper/tables/
+    expire_in: 1 week

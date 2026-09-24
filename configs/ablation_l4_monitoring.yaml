@@ -1,6 +1,6 @@
 name: ablation_l4_monitoring
 dataset: {name: toy}
-embedder: {name: hashing, dim: 512}
+embedder: {name: auto}   # sentence-transformers, falling back to hashing offline
 llm: {name: mock, follow_injections: true}
 pipeline: {top_k: 3, candidate_multiplier: 3}
 seed: 0
@@ -10,6 +10,7 @@ attacks:
   - {name: trigger_backdoor, n_per_target: 1}
   - {name: prompt_injection, n_per_target: 1}
   - {name: context_flooding, n_per_target: 5}
+  - {name: adaptive_poison, n_per_target: 3}
 defenses:
   # Detection only: answers are unchanged, but alerts should fire under every attack.
   - name: monitoring

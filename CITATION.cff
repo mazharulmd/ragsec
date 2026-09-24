@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+title: "RAGSec: A Layered Defense Framework for Retrieval-Augmented Generation Under Adaptive Knowledge Poisoning"
+message: "If you use this software or its results, please cite the accompanying article."
+type: software
+authors:
+  - family-names: Islam
+    given-names: Md Mazharul
+    email: mazharul.islam1@northsouth.edu
+    affiliation: North South University
+repository-code: "https://github.com/mazharulmd/ragsec"
+license: MIT
+keywords:
+  - retrieval-augmented generation
+  - knowledge poisoning
+  - prompt injection
+  - adaptive adversary
+  - data provenance
+  - large language models
+  - AI supply chain security
+abstract: >-
+  An instrumented retrieval-augmented generation framework with four independently
+  switchable defense layers (ingestion-time source verification, calibrated retrieval
+  filtering, provenance-weighted robust aggregation and anomaly monitoring), five
+  knowledge-base poisoning attacks including a defense-aware adaptive adversary with six
+  individually switchable evasion techniques, and a reproducible experiment suite that
+  attributes defensive failure to specific adversary capabilities.

@@ -95,10 +95,13 @@ class RAGPipeline:
         retrieve_ms = (time.perf_counter() - start) * 1000
 
         used = retrieved
+        filter_start = time.perf_counter()
         for layer in self.defenses:
             used = layer.on_retrieve(query, used)
         used = used[: self.top_k]
+        filter_ms = (time.perf_counter() - filter_start) * 1000
 
+        generate_start = time.perf_counter()
         answer: str | None = None
         generator = "llm"
         for layer in self.defenses:
@@ -109,6 +112,7 @@ class RAGPipeline:
         if answer is None:
             prompt = build_prompt(query, [rc.chunk.text for rc in used])
             answer = self.llm.generate(prompt, system=SYSTEM_PROMPT)
+        generate_ms = (time.perf_counter() - generate_start) * 1000
 
         response = RAGResponse(
             query=query,
@@ -117,6 +121,8 @@ class RAGPipeline:
             used=used,
             metadata={
                 "retrieve_ms": retrieve_ms,
+                "filter_ms": filter_ms,
+                "generate_ms": generate_ms,
                 "total_ms": (time.perf_counter() - start) * 1000,
                 "num_candidates": n_candidates,
                 "num_retrieved": len(retrieved),
@@ -124,6 +130,16 @@ class RAGPipeline:
                 "num_filtered": len(retrieved) - len(used),
                 "generator": generator,
                 "defenses": [layer.name for layer in self.defenses],
+                "selected_chunk_ids": (
+                    tuple(
+                        chunk_id
+                        for layer in self.defenses
+                        if hasattr(layer, "selected_chunk_ids")
+                        for chunk_id in layer.selected_chunk_ids
+                    )
+                    if any(hasattr(layer, "selected_chunk_ids") for layer in self.defenses)
+                    else None
+                ),
             },
         )
         for layer in self.defenses:

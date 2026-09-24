@@ -88,10 +88,32 @@ class FilterContext:
 
 @dataclass
 class FilterResult:
+    """One filter's verdict on one candidate.
+
+    ``score`` is the filter's own raw statistic (kept for interpretability), while
+    ``severity`` is a calibrated value in ``[0, 1]``: the raw statistic divided by the
+    filter's decision threshold and clipped, so that ``severity >= 1`` is exactly the
+    filter's own flagging decision. Calibrating every filter onto a common scale is what
+    makes a single layer-wide operating threshold - and therefore a detection ROC curve -
+    well defined.
+    """
+
     name: str
     score: float
     flagged: bool
     reason: str = ""
+    severity: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.severity and self.flagged:
+            self.severity = 1.0
+
+
+def _ratio(value: float, threshold: float) -> float:
+    """``value`` expressed as a fraction of ``threshold``, clipped to ``[0, 1.5]``."""
+    if threshold <= 0:
+        return 1.5 if value > 0 else 0.0
+    return max(0.0, min(1.5, value / threshold))
 
 
 class RetrievalFilter(ABC):
@@ -138,8 +160,13 @@ class InstructionPatternFilter(RetrievalFilter):
             reasons.append(f"{len(matches)} instruction pattern(s)")
         if self.flag_invisible and invisible:
             reasons.append(f"{invisible} invisible character(s)")
+        severity = min(1.5, 1.0 * bool(matches) + 0.75 * bool(self.flag_invisible and invisible))
         return FilterResult(
-            self.name, float(len(matches) + invisible), bool(reasons), "; ".join(reasons)
+            self.name,
+            float(len(matches) + invisible),
+            bool(reasons),
+            "; ".join(reasons),
+            severity,
         )
 
 
@@ -171,18 +198,30 @@ class QueryEchoFilter(RetrievalFilter):
         if len(q) < self.min_query_words:
             return FilterResult(self.name, 0.0, False, "query too short")
         q_bigrams = set(zip(q, q[1:], strict=False))
-        c = words(normalize_text(rc.chunk.text))
+        normalized = normalize_text(rc.chunk.text)
+        c = words(normalized)
         c_bigrams = set(zip(c, c[1:], strict=False))
         ratio = len(q_bigrams & c_bigrams) / len(q_bigrams)
         # A genuine passage may share the declarative core of a question ("is the capital of
         # Japan"); only an echo that also reproduces the interrogative, or is near-verbatim,
         # is treated as query mirroring.
         echoes_interrogative = bool(self.INTERROGATIVES & set(q) & set(c))
-        flagged = ratio >= self.threshold and (
-            echoes_interrogative or ratio >= self.verbatim_threshold
+        leading_question = bool(re.match(r"^\s*[^.!?]{8,}\?", normalized))
+        flagged = leading_question or (
+            ratio >= self.threshold and (echoes_interrogative or ratio >= self.verbatim_threshold)
         )
+        reason = (
+            "question-like passage"
+            if leading_question
+            else f"echoes {ratio:.0%} of query bigrams" if flagged else ""
+        )
+        # A leading question is a categorical signal; bigram echo is graded against the
+        # (interrogative-conditioned) decision threshold.
+        echo_threshold = self.threshold if echoes_interrogative else self.verbatim_threshold
+        echo_severity = _ratio(ratio, echo_threshold)
+        severity = max(echo_severity, 1.0 if leading_question else 0.0)
         return FilterResult(
-            self.name, ratio, flagged, f"echoes {ratio:.0%} of query bigrams" if flagged else ""
+            self.name, max(ratio, float(leading_question)), flagged, reason, severity
         )
 
 
@@ -232,7 +271,12 @@ class SimilarityOutlierFilter(RetrievalFilter):
             z = (distance - self._mean) / self._std
             if z > self.centroid_z_threshold:
                 reasons.append(f"corpus outlier (z={z:.1f})")
-        return FilterResult(self.name, max(rc.score, z), bool(reasons), "; ".join(reasons))
+        severity = _ratio(rc.score, self.max_query_similarity)
+        if self.centroid_z_threshold:
+            severity = max(severity, _ratio(z, self.centroid_z_threshold))
+        return FilterResult(
+            self.name, max(rc.score, z), bool(reasons), "; ".join(reasons), severity
+        )
 
 
 class NaturalnessFilter(RetrievalFilter):
@@ -280,7 +324,17 @@ class NaturalnessFilter(RetrievalFilter):
         if len(text) >= 40 and not low <= entropy <= high:
             reasons.append(f"character entropy {entropy:.2f} out of range")
         score = max(gibberish, repetition, float(invisible > 0))
-        return FilterResult(self.name, score, bool(reasons), "; ".join(reasons))
+        entropy_severity = 0.0
+        if len(text) >= 40:
+            deficit = max(low - entropy, entropy - high)
+            entropy_severity = _ratio(deficit, 0.5) if deficit > 0 else 0.0
+        severity = max(
+            _ratio(gibberish, self.max_gibberish_ratio),
+            _ratio(repetition, self.max_repetition_ratio),
+            1.0 if invisible else 0.0,
+            entropy_severity,
+        )
+        return FilterResult(self.name, score, bool(reasons), "; ".join(reasons), severity)
 
 
 def default_filters() -> list[RetrievalFilter]:
@@ -297,13 +351,23 @@ class RetrievalFilterLayer(DefenseLayer):
 
     name = "retrieval_filter"
 
-    def __init__(self, filters: Sequence[RetrievalFilter] | None = None, mode: str = "drop"):
+    def __init__(
+        self,
+        filters: Sequence[RetrievalFilter] | None = None,
+        mode: str = "drop",
+        threshold: float | None = None,
+    ):
         if mode not in {"drop", "annotate"}:
             raise ValueError("mode must be 'drop' or 'annotate'")
+        if threshold is not None and threshold <= 0:
+            raise ValueError("threshold must be positive")
         self.filters: list[RetrievalFilter] = (
             list(filters) if filters is not None else default_filters()
         )
         self.mode = mode
+        #: Operating point on the calibrated suspicion scale. ``None`` keeps each filter's own
+        #: decision (equivalent to ``threshold=1.0``); sweeping it traces the detection ROC.
+        self.threshold = threshold
         self._embedder: BaseEmbedder | None = None
         self._store: VectorStore | None = None
         self.last_results: dict[str, list[FilterResult]] = {}
@@ -320,10 +384,21 @@ class RetrievalFilterLayer(DefenseLayer):
         for rc in retrieved:
             results = [f.evaluate(rc, ctx) for f in self.filters]
             self.last_results[rc.chunk.chunk_id] = results
+            # The layer-wide suspicion score is the strongest single signal rather than a sum:
+            # the filters target disjoint attack mechanisms, so one confident detector should
+            # not be diluted by three that have nothing to say about this passage.
+            suspicion = max((r.severity for r in results), default=0.0)
+            rc.filter_scores["suspicion"] = suspicion
             for result in results:
                 rc.filter_scores[result.name] = result.score
-                if result.flagged:
-                    rc.flag(f"{result.name}: {result.reason}")
+                rc.filter_scores[f"{result.name}.severity"] = result.severity
+            if self.threshold is None:
+                for result in results:
+                    if result.flagged:
+                        rc.flag(f"{result.name}: {result.reason}")
+            elif suspicion >= self.threshold:
+                strongest = max(results, key=lambda r: r.severity)
+                rc.flag(f"{strongest.name}: suspicion {suspicion:.2f} >= {self.threshold:.2f}")
         return retrieved
 
     def on_retrieve(self, query: str, retrieved: list[RetrievedChunk]) -> list[RetrievedChunk]:
