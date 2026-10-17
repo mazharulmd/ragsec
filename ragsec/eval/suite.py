@@ -1,6 +1,7 @@
 """The experiment suite reported in the paper.
 
-Each study below answers one question and writes one JSONL file under ``results/paper``:
+Each study below answers one question and writes one JSONL file under ``results/paper-pinned``.
+The main study also saves per-question outcomes in a revision-keyed sidecar directory.
 
 ===========================  ==================================================================
 ``main``                     How much does each layer, and the full stack, reduce attack success
@@ -26,6 +27,7 @@ and never recomputes a finished cell.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from collections.abc import Iterator
@@ -262,10 +264,44 @@ def _row(cell: Cell, result: Any, wall_s: float) -> dict[str, Any]:
     }
 
 
-def run_cell(cell: Cell) -> list[dict[str, Any]]:
+def query_records_path(out_path: Path, identifier: str) -> Path:
+    """Stable sidecar path for a cell's per-question outcomes."""
+    digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
+    return out_path.parent / f"{out_path.stem}_query_records" / f"{digest}.jsonl"
+
+
+def run_cell(cell: Cell, query_path: Path | None = None) -> list[dict[str, Any]]:
     start = time.perf_counter()
     results = ExperimentRunner(cell.config).run()
     wall = time.perf_counter() - start
+    if query_path is not None:
+        dataset_spec = cell.config.dataset
+        dataset_name = dataset_spec.get("name", "toy")
+        dataset_source = dataset_spec.get("path") or (
+            "hotpotqa/hotpot_qa" if dataset_name in {"hotpot", "hotpotqa"} else dataset_name
+        )
+        query_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = query_path.with_suffix(".tmp")
+        with temporary_path.open("w", encoding="utf-8") as handle:
+            for result in results:
+                metadata = {
+                    "record_type": "query_outcome",
+                    "study": cell.study,
+                    **cell.key,
+                    **cell.extra,
+                    "dataset_source": dataset_source,
+                    "dataset_config": dataset_spec.get("config"),
+                    "dataset_revision": dataset_spec.get("revision"),
+                    "dataset_split": dataset_spec.get("split"),
+                    "attack": result.attack,
+                    "run_name": result.name,
+                    "_cell": cell_id(cell),
+                }
+                for record in result.records:
+                    outcome = record.to_dict()
+                    outcome.pop("detections", None)
+                    handle.write(json.dumps({**metadata, **outcome}) + "\n")
+        temporary_path.replace(query_path)
     return [_row(cell, result, wall / max(1, len(results))) for result in results]
 
 
@@ -287,7 +323,7 @@ def run_study(
     resume: bool = True,
     verbose: bool = True,
 ) -> list[dict[str, Any]]:
-    """Run every cell, appending rows to ``out_path`` (JSONL) as they complete."""
+    """Run cells and append summaries; main-study query outcomes are saved per cell."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done: set[str] = set()
     rows: list[dict[str, Any]] = []
@@ -301,13 +337,18 @@ def run_study(
     with out_path.open("a", encoding="utf-8") as handle:
         for index, cell in enumerate(cells, 1):
             identifier = cell_id(cell)
-            if identifier in done:
+            query_path = (
+                query_records_path(out_path, identifier) if out_path.stem == "main" else None
+            )
+            if identifier in done and (query_path is None or query_path.exists()):
                 continue
             started = time.perf_counter()
-            for row in run_cell(cell):
-                row["_cell"] = identifier
-                rows.append(row)
-                handle.write(json.dumps(row) + "\n")
+            cell_rows = run_cell(cell, query_path=query_path)
+            if identifier not in done:
+                for row in cell_rows:
+                    row["_cell"] = identifier
+                    rows.append(row)
+                    handle.write(json.dumps(row) + "\n")
             handle.flush()
             done.add(identifier)
             if verbose:

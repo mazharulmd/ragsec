@@ -3,7 +3,9 @@
 Narrative summary of the archived evaluation. The tables in `paper/tables/` and records in
 `results/paper/*.jsonl` reproduce the submitted numbers, but those records predate dataset
 revision tracking. New pinned reruns go to `results/paper-pinned/` and should be reported
-separately until the paper's results have been regenerated from that snapshot.
+separately until the paper's results have been regenerated from that snapshot. New main-study
+runs also save per-question outcomes under `results/paper-pinned/main_query_records/` for
+query-clustered analysis.
 
 Regenerate the archived tables from the committed records with:
 

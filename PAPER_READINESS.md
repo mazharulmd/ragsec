@@ -35,11 +35,11 @@ it to configuration or result records.
    empirical validation. The default study uses two models and roughly 3,200 completion calls
    for one SQuAD seed; estimate provider cost and record exact model IDs, endpoint/provider,
    date, sample count and failures with any run.
-2. **Query-level uncertainty remains unavailable.** The manuscript retains pooled rates as
-   descriptive estimates and adds the observed minimum-to-maximum range across seeds, rather
-   than treating repeated questions as independent Wilson trials. The stored records contain
-   only per-seed aggregates, so they cannot support a query-clustered bootstrap. Persist
-   per-question outcomes and rerun the study before making population-level uncertainty claims.
+2. **Query-level uncertainty remains unavailable for the archived results.** The manuscript
+   retains pooled rates as descriptive estimates and adds the observed min-to-max range across
+   seeds. New pinned main-study runs now persist per-question outcomes, enabling a query-clustered
+   bootstrap; the archived rows still lack those outcomes, and no cluster-bootstrap intervals
+   have been calculated yet.
 3. **The measured corpus scale is small.** The abstract and conclusion now state that the
    evaluated corpora contain 30 to 1,999 documents and do not establish enterprise-scale
    behavior. A larger-corpus or scale-sensitivity experiment is still needed for that claim.

@@ -109,7 +109,8 @@ ragsec figures                  # tables + figures -> paper/tables, paper/figure
 The committed records in `results/paper/` predate dataset revision tracking. New runs use pinned
 Hub revisions and a separate output directory, so they cannot be mixed with those archived
 records. The SQuAD and HotpotQA commit IDs are recorded in `ragsec/eval/suite.py` and copied
-into every new result row. Regenerate figures from the new run with
+into every new result row. Main-study per-question outcomes are written under
+`results/paper-pinned/main_query_records/`. Regenerate figures from the new run with
 `ragsec figures --results-dir results/paper-pinned`.
 
 `ragsec suite` runs eight offline studies by default. A ninth, real-model confirmation study is
