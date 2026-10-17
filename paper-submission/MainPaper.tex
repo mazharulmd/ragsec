@@ -436,7 +436,8 @@ in which every layer can be enabled independently, and we introduce a defense-aw
 adversary decomposed into six individually switchable evasion techniques so that defensive
 failure can be attributed rather than merely observed. The evaluation spans three corpora
 (SQuAD, HotpotQA and a bundled corpus), a sentence-transformer retriever, seven configurations,
-five attacks and three seeds, and reports attack success restricted to the queries each
+five attacks and three seeds. These corpora contain 30 to 1,999 documents, so the results do not
+establish behavior at enterprise index scale. We report attack success restricted to the queries each
 configuration answers correctly with no adversary present. Against the four static attacks the
 layered defense performs as the literature predicts, reducing attack success from 0.95 to 0.00.
 Against the adaptive adversary the same stack fails: the retrieval filter's true-positive rate
@@ -1877,7 +1878,8 @@ clean accuracy, and was the only control in the study that did. We take this as 
 conclusion: content-based heuristics belong in a RAG security architecture as detection and as
 incident evidence, but the preventive control has to be verifiable provenance. The security
 question for a retrieval pipeline is not primarily what a document says, since an adversary
-chooses that, but whether the pipeline can prove who put it there.
+chooses that, but whether the pipeline can prove who put it there. These findings are bounded by
+corpora of 30 to 1,999 documents and do not establish behavior at enterprise index scale.
 
 
 \section*{CRediT authorship contribution statement}

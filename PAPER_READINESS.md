@@ -40,10 +40,9 @@ it to configuration or result records.
    than treating repeated questions as independent Wilson trials. The stored records contain
    only per-seed aggregates, so they cannot support a query-clustered bootstrap. Persist
    per-question outcomes and rerun the study before making population-level uncertainty claims.
-3. **The measured corpus scale is small.** The evaluated corpora contain 30 to 1,999 documents,
-   and the paper itself notes that this does not establish behavior at enterprise index scale.
-   Either add a larger-corpus/scale sensitivity experiment or make the boundary prominent in the
-   abstract and conclusion.
+3. **The measured corpus scale is small.** The abstract and conclusion now state that the
+   evaluated corpora contain 30 to 1,999 documents and do not establish enterprise-scale
+   behavior. A larger-corpus or scale-sensitivity experiment is still needed for that claim.
 4. **The signature result is a trust-boundary result.** The experiment now generates a fresh
    HMAC key in memory and assumes the adversary cannot invoke or compromise the trusted signer.
    It still does not prevent poisoning by a malicious authorized publisher. Signatures now bind
