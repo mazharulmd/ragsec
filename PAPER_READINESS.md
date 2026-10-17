@@ -57,6 +57,9 @@ it to configuration or result records.
    immutable Hub commits and records source, revision, configuration and split in new result
    rows. Existing `results/paper/` rows predate that metadata; rerun the study before claiming
    that its current numbers correspond to the newly pinned snapshots.
+7. **Attack success uses a lenient scorer and full query access.** The paper now discloses that
+   it uses normalized substring matching and gives the attacker every benchmark question as a
+   target. A strict exact-match/token-F1 comparison and limited-target campaign remain untested.
 
 ## Paper and artifact cleanup
 

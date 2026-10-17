@@ -738,6 +738,10 @@ publisher, read or forge its signing key, modify the generator's weights or retr
 other users' queries. The adversary's budget is the number of documents $b$ they may insert per
 target question; we sweep $b$ explicitly.
 
+For these benchmark experiments, we operationalise target knowledge by giving the adversary
+the full QA question list and targeting every listed question. This is a batch-poisoning
+scenario with complete benchmark access, not a model of discovering unknown production queries.
+
 Two adversarial goals are distinguished. Under \emph{substitution}, the adversary chooses a
 target answer $a^{*}$ and succeeds when $a^{*}$ appears in the system's response. Under
 \emph{suppression}, the adversary succeeds when the correct answer does \emph{not} appear;
@@ -1131,6 +1135,10 @@ questions recur across seeds, so the pooled observations are not independent. Th
 describe variation across the experiment's random seeds; they are not confidence intervals over
 a population of questions. The released result files retain only seed-level aggregates, so
 query-clustered uncertainty remains unmeasured.
+
+Gold-answer correctness and target satisfaction use normalized substring matching. This lenient
+criterion can count partial or incidental mentions and is not equivalent to standard exact-match
+or token-F1 scoring.
 
 For suppression attacks the unconditional ASR is inflated by the pipeline's own errors: a query
 the system was going to get wrong anyway is counted as a successful suppression. We therefore
@@ -1830,6 +1838,11 @@ the similarity-outlier filter, which estimates corpus statistics, and it affects
 poisoned passage reaches the top-$k$ for a query. It does not obviously affect the central
 result, since provenance spoofing is scale-independent, but this is an assumption rather than a
 measurement.
+
+The attack campaign also assumes full access to the benchmark query list and targets every
+question. We do not measure query discovery or poisoning under a limited target set, and the
+lenient substring scorer may overcount successful answers. Both assumptions narrow the scope of
+the reported attack-success rates.
 
 The adaptive adversary is one adversary, constructed by us against our own defense. It gives a
 lower bound on what an adaptive attacker achieves, not an upper bound, and a stronger one
