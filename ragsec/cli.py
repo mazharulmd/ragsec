@@ -144,6 +144,7 @@ def cmd_suite(args: argparse.Namespace) -> int:
         models=args.models or None,
         base_url=args.base_url or None,
         api_key_env=args.api_key_env or None,
+        queries=args.queries or None,
     )
     for study in args.studies or list(STUDIES):
         print(f"{study}: {len(rows.get(study, []))} rows -> {args.output_dir}/{study}.jsonl")
@@ -247,6 +248,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_suite.add_argument(
         "--api-key-env", default="",
         help="environment variable holding the API key (default: OPENAI_API_KEY)",
+    )
+    p_suite.add_argument(
+        "--queries", type=int, default=0,
+        help=(
+            "queries per corpus in the confirmation study (default 100). Lower it to stay "
+            "inside a provider's free-tier request cap"
+        ),
     )
     p_suite.set_defaults(func=cmd_suite)
 

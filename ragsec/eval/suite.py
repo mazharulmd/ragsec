@@ -599,6 +599,7 @@ def run_suite(
     models: list[str] | None = None,
     base_url: str | None = None,
     api_key_env: str | None = None,
+    queries: int | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Run the requested studies and return ``{study: rows}``.
 
@@ -606,8 +607,11 @@ def run_suite(
     call runs everything else, and the paid ones only when named explicitly.
     """
     global CONFIRMATION_MODELS, CONFIRMATION_BASE_URL, CONFIRMATION_KEY_ENV
+    global CONFIRMATION_QUERIES
     if models:
         CONFIRMATION_MODELS = list(models)
+    if queries:
+        CONFIRMATION_QUERIES = queries
     if base_url:
         CONFIRMATION_BASE_URL = base_url
     if api_key_env:
