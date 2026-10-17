@@ -1,5 +1,13 @@
 % References.bib for "RAGSec: A Defense Framework for RAG Under Adaptive Knowledge Poisoning"
 % Keys match the \cite / \citep / \citet keys used in the manuscript.
+%
+% Every entry was checked against OpenAlex and Crossref in October 2026. DOIs are the
+% publisher DOI where a work has appeared in a venue, and the registered arXiv DOI
+% (10.48550/arXiv.*) where it has not. Two entries were upgraded from preprint to their
+% published versions during that check: xiang2024robustrag (IEEE SaTML) and deng2024pandora
+% (NDSS AISCC workshop). asai2023selfrag could not be confirmed automatically because the
+% OpenAlex record for arXiv:2310.11511 carries mismatched metadata; it is cited from the
+% ICLR 2024 proceedings.
 
 %% ---------------------------------------------------------------- RAG
 @inproceedings{lewis2020,
@@ -21,7 +29,8 @@
   volume    = {119},
   pages     = {3929--3938},
   publisher = {PMLR},
-  year      = {2020}
+  year      = {2020},
+  doi       = {10.48550/arXiv.2002.08909}
 }
 
 @inproceedings{karpukhin2020dpr,
@@ -31,7 +40,8 @@
   pages     = {6769--6781},
   publisher = {Association for Computational Linguistics},
   address   = {Stroudsburg, PA, USA},
-  year      = {2020}
+  year      = {2020},
+  doi       = {10.18653/v1/2020.emnlp-main.550}
 }
 
 @inproceedings{izacard2021fid,
@@ -41,7 +51,8 @@
   pages     = {874--880},
   publisher = {Association for Computational Linguistics},
   address   = {Stroudsburg, PA, USA},
-  year      = {2021}
+  year      = {2021},
+  doi       = {10.18653/v1/2021.eacl-main.74}
 }
 
 @inproceedings{borgeaud2022retro,
@@ -52,7 +63,8 @@
   volume    = {162},
   pages     = {2206--2240},
   publisher = {PMLR},
-  year      = {2022}
+  year      = {2022},
+  doi       = {10.48550/arXiv.2112.04426}
 }
 
 @inproceedings{shi2023replug,
@@ -62,29 +74,32 @@
   pages     = {8371--8384},
   publisher = {Association for Computational Linguistics},
   address   = {Stroudsburg, PA, USA},
-  year      = {2024}
+  year      = {2024},
+  doi       = {10.18653/v1/2024.naacl-long.463}
 }
 
 @inproceedings{asai2023selfrag,
   author    = {Asai, Akari and Wu, Zeqiu and Wang, Yizhong and Sil, Avirup and Hajishirzi, Hannaneh},
   title     = {{Self-RAG}: Learning to Retrieve, Generate, and Critique through Self-Reflection},
   booktitle = {Proceedings of the 12th International Conference on Learning Representations (ICLR)},
-  year      = {2024}
+  year      = {2024},
+  doi       = {10.48550/arXiv.2310.11511}
 }
 
 @article{gao2024survey,
   author    = {Gao, Yunfan and Xiong, Yun and Gao, Xinyu and Jia, Kangxiang and Pan, Jinliu and Bi, Yuxi and Dai, Yi and Sun, Jiawei and Wang, Meng and Wang, Haofen},
   title     = {Retrieval-Augmented Generation for Large Language Models: A Survey},
-  journal   = {arXiv},
-  pages     = {arXiv:2312.10997},
-  year      = {2023}
+  journal   = {arXiv preprint arXiv:2312.10997},
+  year      = {2023},
+  doi       = {10.48550/arXiv.2312.10997}
 }
 
 @inproceedings{yoran2024robust,
   author    = {Yoran, Ori and Wolfson, Tomer and Ram, Ori and Berant, Jonathan},
   title     = {Making Retrieval-Augmented Language Models Robust to Irrelevant Context},
   booktitle = {Proceedings of the 12th International Conference on Learning Representations (ICLR)},
-  year      = {2024}
+  year      = {2024},
+  doi       = {10.48550/arXiv.2310.01558}
 }
 
 @inproceedings{cuconasu2024noise,
@@ -94,7 +109,8 @@
   pages     = {719--729},
   publisher = {ACM},
   address   = {New York, NY, USA},
-  year      = {2024}
+  year      = {2024},
+  doi       = {10.1145/3626772.3657834}
 }
 
 %% ---------------------------------------------------------------- Poisoning
@@ -104,7 +120,8 @@
   booktitle = {Proceedings of the 29th International Conference on Machine Learning (ICML)},
   publisher = {Omnipress},
   address   = {Madison, WI, USA},
-  year      = {2012}
+  year      = {2012},
+  doi       = {10.48550/arXiv.1206.6389}
 }
 
 @article{gu2017badnets,
@@ -113,7 +130,8 @@
   journal   = {IEEE Access},
   volume    = {7},
   pages     = {47230--47244},
-  year      = {2019}
+  year      = {2019},
+  doi       = {10.1109/ACCESS.2019.2909068}
 }
 
 @inproceedings{carlini2024poison,
@@ -123,7 +141,8 @@
   pages     = {407--425},
   publisher = {IEEE},
   address   = {Piscataway, NJ, USA},
-  year      = {2024}
+  year      = {2024},
+  doi       = {10.1109/SP54263.2024.00179}
 }
 
 @inproceedings{zhong2023,
@@ -133,7 +152,8 @@
   pages     = {13764--13775},
   publisher = {Association for Computational Linguistics},
   address   = {Stroudsburg, PA, USA},
-  year      = {2023}
+  year      = {2023},
+  doi       = {10.18653/v1/2023.emnlp-main.849}
 }
 
 @inproceedings{zou2024,
@@ -143,31 +163,32 @@
   pages     = {3827--3844},
   publisher = {USENIX Association},
   address   = {Berkeley, CA, USA},
-  year      = {2025}
+  year      = {2025},
+  doi       = {10.48550/arXiv.2402.07867}
 }
 
 @article{xue2024badrag,
   author    = {Xue, Jiaqi and Zheng, Mengxin and Hu, Yebowen and Liu, Fei and Chen, Xun and Lou, Qian},
   title     = {{BadRAG}: Identifying Vulnerabilities in Retrieval Augmented Generation of Large Language Models},
-  journal   = {arXiv},
-  pages     = {arXiv:2406.00083},
-  year      = {2024}
+  journal   = {arXiv preprint arXiv:2406.00083},
+  year      = {2024},
+  doi       = {10.48550/arXiv.2406.00083}
 }
 
 @article{cheng2024trojanrag,
   author    = {Cheng, Pengzhou and Ding, Yidong and Ju, Tianjie and Wu, Zongru and Du, Wei and Yi, Ping and Zhang, Zhuosheng and Liu, Gongshen},
   title     = {{TrojanRAG}: Retrieval-Augmented Generation Can Be Backdoor Driver in Large Language Models},
-  journal   = {arXiv},
-  pages     = {arXiv:2405.13401},
-  year      = {2024}
+  journal   = {arXiv preprint arXiv:2405.13401},
+  year      = {2024},
+  doi       = {10.48550/arXiv.2405.13401}
 }
 
 @article{chaudhari2024phantom,
   author    = {Chaudhari, Harsh and Severi, Giorgio and Abascal, John and Jagielski, Matthew and Choquette-Choo, Christopher A. and Nasr, Milad and Nita-Rotaru, Cristina and Oprea, Alina},
   title     = {Phantom: General Trigger Attacks on Retrieval Augmented Language Generation},
-  journal   = {arXiv},
-  pages     = {arXiv:2405.20485},
-  year      = {2024}
+  journal   = {arXiv preprint arXiv:2405.20485},
+  year      = {2024},
+  doi       = {10.48550/arXiv.2405.20485}
 }
 
 @inproceedings{shafran2024jamming,
@@ -177,7 +198,8 @@
   pages     = {3787--3806},
   publisher = {USENIX Association},
   address   = {Berkeley, CA, USA},
-  year      = {2025}
+  year      = {2025},
+  doi       = {10.48550/arXiv.2406.05870}
 }
 
 @inproceedings{tan2024glue,
@@ -187,15 +209,18 @@
   pages     = {1610--1626},
   publisher = {Association for Computational Linguistics},
   address   = {Stroudsburg, PA, USA},
-  year      = {2024}
+  year      = {2024},
+  doi       = {10.18653/v1/2024.emnlp-main.96}
 }
 
-@article{deng2024pandora,
+@inproceedings{deng2024pandora,
   author    = {Deng, Gelei and Liu, Yi and Wang, Kailong and Li, Yuekang and Zhang, Tianwei and Liu, Yang},
   title     = {Pandora: Jailbreak {GPTs} by Retrieval Augmented Generation Poisoning},
-  journal   = {arXiv},
-  pages     = {arXiv:2402.08416},
-  year      = {2024}
+  booktitle = {Proceedings of the Workshop on Artificial Intelligence System with Confidential Computing (AISCC), Network and Distributed System Security Symposium (NDSS)},
+  publisher = {Internet Society},
+  address   = {Reston, VA, USA},
+  year      = {2024},
+  doi       = {10.14722/aiscc.2024.23018}
 }
 
 @inproceedings{ohm2020backstabber,
@@ -207,16 +232,17 @@
   pages     = {23--43},
   publisher = {Springer},
   address   = {Cham, Switzerland},
-  year      = {2020}
+  year      = {2020},
+  doi       = {10.1007/978-3-030-52683-2_2}
 }
 
 %% ---------------------------------------------------------------- Prompt injection
 @article{perez2022ignore,
   author    = {Perez, F{\'a}bio and Ribeiro, Ian},
   title     = {Ignore Previous Prompt: Attack Techniques for Language Models},
-  journal   = {arXiv},
-  pages     = {arXiv:2211.09527},
-  year      = {2022}
+  journal   = {arXiv preprint arXiv:2211.09527},
+  year      = {2022},
+  doi       = {10.48550/arXiv.2211.09527}
 }
 
 @inproceedings{greshake2023,
@@ -226,15 +252,16 @@
   pages     = {79--90},
   publisher = {ACM},
   address   = {New York, NY, USA},
-  year      = {2023}
+  year      = {2023},
+  doi       = {10.1145/3605764.3623985}
 }
 
 @article{liu2023promptinjection,
   author    = {Liu, Yi and Deng, Gelei and Li, Yuekang and Wang, Kailong and Wang, Zihao and Wang, Xiaofeng and Zhang, Tianwei and Liu, Yepang and Wang, Haoyu and Zheng, Yan and others},
   title     = {Prompt Injection Attack against {LLM}-Integrated Applications},
-  journal   = {arXiv},
-  pages     = {arXiv:2306.05499},
-  year      = {2023}
+  journal   = {arXiv preprint arXiv:2306.05499},
+  year      = {2023},
+  doi       = {10.48550/arXiv.2306.05499}
 }
 
 @inproceedings{liu2024formalizing,
@@ -244,15 +271,16 @@
   pages     = {1831--1847},
   publisher = {USENIX Association},
   address   = {Berkeley, CA, USA},
-  year      = {2024}
+  year      = {2024},
+  doi       = {10.48550/arXiv.2310.12815}
 }
 
 @article{wallace2024hierarchy,
   author    = {Wallace, Eric and Xiao, Kai and Leike, Reimar and Weng, Lilian and Heidecke, Johannes and Beutel, Alex},
   title     = {The Instruction Hierarchy: Training {LLMs} to Prioritize Privileged Instructions},
-  journal   = {arXiv},
-  pages     = {arXiv:2404.13208},
-  year      = {2024}
+  journal   = {arXiv preprint arXiv:2404.13208},
+  year      = {2024},
+  doi       = {10.48550/arXiv.2404.13208}
 }
 
 @inproceedings{chen2024struq,
@@ -262,7 +290,8 @@
   pages     = {2383--2400},
   publisher = {USENIX Association},
   address   = {Berkeley, CA, USA},
-  year      = {2025}
+  year      = {2025},
+  doi       = {10.48550/arXiv.2402.06363}
 }
 
 @inproceedings{chen2025secalign,
@@ -272,48 +301,51 @@
   pages     = {2833--2847},
   publisher = {ACM},
   address   = {New York, NY, USA},
-  year      = {2025}
+  year      = {2025},
+  doi       = {10.1145/3719027.3744836}
 }
 
 @article{hines2024spotlighting,
   author    = {Hines, Keegan and Lopez, Gary and Hall, Matthew and Zarfati, Federico and Zunger, Yonatan and Kiciman, Emre},
   title     = {Defending Against Indirect Prompt Injection Attacks with Spotlighting},
-  journal   = {arXiv},
-  pages     = {arXiv:2403.14720},
-  year      = {2024}
+  journal   = {arXiv preprint arXiv:2403.14720},
+  year      = {2024},
+  doi       = {10.48550/arXiv.2403.14720}
 }
 
 @article{alon2023perplexity,
   author    = {Alon, Gabriel and Kamfonas, Michael},
   title     = {Detecting Language Model Attacks with Perplexity},
-  journal   = {arXiv},
-  pages     = {arXiv:2308.14132},
-  year      = {2023}
+  journal   = {arXiv preprint arXiv:2308.14132},
+  year      = {2023},
+  doi       = {10.48550/arXiv.2308.14132}
 }
 
 @article{jain2023baseline,
   author    = {Jain, Neel and Schwarzschild, Avi and Wen, Yuxin and Somepalli, Gowthami and Kirchenbauer, John and Chiang, Ping-yeh and Goldblum, Micah and Saha, Aniruddha and Geiping, Jonas and Goldstein, Tom},
   title     = {Baseline Defenses for Adversarial Attacks against Aligned Language Models},
-  journal   = {arXiv},
-  pages     = {arXiv:2309.00614},
-  year      = {2023}
+  journal   = {arXiv preprint arXiv:2309.00614},
+  year      = {2023},
+  doi       = {10.48550/arXiv.2309.00614}
 }
 
 %% ---------------------------------------------------------------- RAG defenses
-@article{xiang2024robustrag,
+@inproceedings{xiang2024robustrag,
   author    = {Xiang, Chong and Wu, Tong and Zhong, Zexuan and Wagner, David and Chen, Danqi and Mittal, Prateek},
   title     = {Certifiably Robust {RAG} against Retrieval Corruption},
-  journal   = {arXiv},
-  pages     = {arXiv:2405.15556},
-  year      = {2024}
+  booktitle = {Proceedings of the 2026 IEEE Conference on Secure and Trustworthy Machine Learning (SaTML)},
+  publisher = {IEEE},
+  address   = {Piscataway, NJ, USA},
+  year      = {2026},
+  doi       = {10.1109/SaTML68715.2026.00029}
 }
 
 @article{zhou2025trustrag,
   author    = {Zhou, Huichi and Lee, Kin-Hei and Zhan, Zhonghao and Chen, Yue and Li, Zhenhao and Wang, Zhaoyang and Haddadi, Hamed and Yilmaz, Emine},
   title     = {{TrustRAG}: Enhancing Robustness and Trustworthiness in Retrieval-Augmented Generation},
-  journal   = {arXiv},
-  pages     = {arXiv:2501.00879},
-  year      = {2025}
+  journal   = {arXiv preprint arXiv:2501.00879},
+  year      = {2025},
+  doi       = {10.48550/arXiv.2501.00879}
 }
 
 @inproceedings{weller2024defending,
@@ -323,7 +355,8 @@
   pages     = {402--417},
   publisher = {Association for Computational Linguistics},
   address   = {Stroudsburg, PA, USA},
-  year      = {2024}
+  year      = {2024},
+  doi       = {10.18653/v1/2024.eacl-short.35}
 }
 
 %% ---------------------------------------------------------------- Adaptive evaluation
@@ -334,7 +367,8 @@
   pages     = {3--14},
   publisher = {ACM},
   address   = {New York, NY, USA},
-  year      = {2017}
+  year      = {2017},
+  doi       = {10.1145/3128572.3140444}
 }
 
 @inproceedings{athalye2018obfuscated,
@@ -345,15 +379,16 @@
   volume    = {80},
   pages     = {274--283},
   publisher = {PMLR},
-  year      = {2018}
+  year      = {2018},
+  doi       = {10.48550/arXiv.1802.00420}
 }
 
 @article{carlini2019evaluating,
   author    = {Carlini, Nicholas and Athalye, Anish and Papernot, Nicolas and Brendel, Wieland and Rauber, Jonas and Tsipras, Dimitris and Goodfellow, Ian and Madry, Aleksander and Kurakin, Alexey},
   title     = {On Evaluating Adversarial Robustness},
-  journal   = {arXiv},
-  pages     = {arXiv:1902.06705},
-  year      = {2019}
+  journal   = {arXiv preprint arXiv:1902.06705},
+  year      = {2019},
+  doi       = {10.48550/arXiv.1902.06705}
 }
 
 @inproceedings{tramer2020adaptive,
@@ -364,7 +399,8 @@
   pages     = {1633--1645},
   publisher = {Curran Associates},
   address   = {Red Hook, NY, USA},
-  year      = {2020}
+  year      = {2020},
+  doi       = {10.48550/arXiv.2002.08347}
 }
 
 %% ---------------------------------------------------------------- Provenance / supply chain
@@ -375,8 +411,8 @@
   number      = {2104},
   institution = {Internet Engineering Task Force},
   address     = {Fremont, CA, USA},
-  doi         = {10.17487/RFC2104},
-  year        = {1997}
+  year        = {1997},
+  doi         = {10.17487/RFC2104}
 }
 
 @inproceedings{torresarias2019intoto,
@@ -396,7 +432,8 @@
   pages     = {2353--2367},
   publisher = {ACM},
   address   = {New York, NY, USA},
-  year      = {2022}
+  year      = {2022},
+  doi       = {10.1145/3548606.3560596}
 }
 
 @techreport{nist2022ssdf,
@@ -406,8 +443,8 @@
   number      = {800-218},
   institution = {National Institute of Standards and Technology},
   address     = {Gaithersburg, MD, USA},
-  doi         = {10.6028/NIST.SP.800-218},
-  year        = {2022}
+  year        = {2022},
+  doi         = {10.6028/NIST.SP.800-218}
 }
 
 @techreport{vassilev2024nistaml,
@@ -417,15 +454,16 @@
   number      = {100-2 E2023},
   institution = {National Institute of Standards and Technology},
   address     = {Gaithersburg, MD, USA},
-  doi         = {10.6028/NIST.AI.100-2e2023},
-  year        = {2024}
+  year        = {2024},
+  doi         = {10.6028/NIST.AI.100-2e2023}
 }
 
 @misc{owasp2025llm,
   author       = {{OWASP Foundation}},
   title        = {{OWASP} Top 10 for Large Language Model Applications},
   howpublished = {\url{https://genai.owasp.org/llm-top-10/}},
-  year         = {2025}
+  year         = {2025},
+  note         = {Accessed: 17 October 2026}
 }
 
 %% ---------------------------------------------------------------- Data, models, statistics
@@ -436,7 +474,8 @@
   pages     = {2383--2392},
   publisher = {Association for Computational Linguistics},
   address   = {Stroudsburg, PA, USA},
-  year      = {2016}
+  year      = {2016},
+  doi       = {10.18653/v1/D16-1264}
 }
 
 @inproceedings{yang2018hotpotqa,
@@ -446,7 +485,8 @@
   pages     = {2369--2380},
   publisher = {Association for Computational Linguistics},
   address   = {Stroudsburg, PA, USA},
-  year      = {2018}
+  year      = {2018},
+  doi       = {10.18653/v1/D18-1259}
 }
 
 @inproceedings{reimers2019sbert,
@@ -456,7 +496,8 @@
   pages     = {3982--3992},
   publisher = {Association for Computational Linguistics},
   address   = {Stroudsburg, PA, USA},
-  year      = {2019}
+  year      = {2019},
+  doi       = {10.18653/v1/D19-1410}
 }
 
 @inproceedings{wang2020minilm,
@@ -467,7 +508,8 @@
   pages     = {5776--5788},
   publisher = {Curran Associates},
   address   = {Red Hook, NY, USA},
-  year      = {2020}
+  year      = {2020},
+  doi       = {10.48550/arXiv.2002.10957}
 }
 
 @article{johnson2021faiss,
@@ -477,7 +519,8 @@
   volume    = {7},
   number    = {3},
   pages     = {535--547},
-  year      = {2021}
+  year      = {2021},
+  doi       = {10.1109/TBDATA.2019.2921572}
 }
 
 @article{lin1991divergence,
@@ -487,7 +530,8 @@
   volume    = {37},
   number    = {1},
   pages     = {145--151},
-  year      = {1991}
+  year      = {1991},
+  doi       = {10.1109/18.61115}
 }
 
 @article{wilson1927,
@@ -497,7 +541,8 @@
   volume    = {22},
   number    = {158},
   pages     = {209--212},
-  year      = {1927}
+  year      = {1927},
+  doi       = {10.1080/01621459.1927.10502953}
 }
 
 @article{brown2001interval,
@@ -507,7 +552,8 @@
   volume    = {16},
   number    = {2},
   pages     = {101--117},
-  year      = {2001}
+  year      = {2001},
+  doi       = {10.1214/ss/1009213286}
 }
 
 @inproceedings{davis2006prc,
@@ -517,7 +563,8 @@
   pages     = {233--240},
   publisher = {ACM},
   address   = {New York, NY, USA},
-  year      = {2006}
+  year      = {2006},
+  doi       = {10.1145/1143844.1143874}
 }
 
 @article{saito2015prc,
@@ -527,5 +574,6 @@
   volume    = {10},
   number    = {3},
   pages     = {e0118432},
-  year      = {2015}
+  year      = {2015},
+  doi       = {10.1371/journal.pone.0118432}
 }

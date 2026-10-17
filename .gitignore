@@ -20,10 +20,9 @@ results/*
 RAGSec Paper.zip
 RAG Security Paper.zip
 
-# MDPI's LaTeX class, bibliography styles and logos are their copyright and are not
-# redistributed here. Download the Information template from the journal's author pages
-# and drop its Definitions/ directory into "RAG Security Paper/" to compile.
-paper-submission/Definitions/
+# Compiled manuscript: regenerate with pdflatex rather than versioning the binary.
+paper-submission/*.pdf
+!paper-submission/figures/*.pdf
 
 # LaTeX build products
 *.aux

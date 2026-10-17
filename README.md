@@ -156,25 +156,32 @@ for c in configs/ablation_*.yaml; do ragsec evaluate "$c"; done
 
 ## The paper
 
-`paper-submission/` holds the manuscript as submitted to MDPI *Information*
-(manuscript ID information-4616315, submitted 23 Sep 2026, desk-rejected without review
-on 26 Sep 2026). It is being revised for resubmission.
+`paper-submission/` holds the manuscript, formatted for **Computers & Security** (Elsevier):
 
 ```
-paper-submission/MainPaper.tex    the manuscript, maintained by hand
-paper-submission/References.bib   55 references
+paper-submission/MainPaper.tex    the manuscript (elsarticle class)
+paper-submission/Highlights.tex   Elsevier highlights, uploaded as a separate item
+paper-submission/References.bib   55 references, 52 with DOIs, all verified Oct 2026
 paper-submission/figures/         Fig1.pdf ... Fig12.pdf
-paper-submission/MainPaper.pdf    the compiled submission
-paper-submission/Definitions/     not in this repository, see below
 ```
 
-MDPI's LaTeX class, bibliography styles and logos are their copyright and are not
-redistributed here. Download the *Information* template from the journal's author pages and
-copy its `Definitions/` directory into `paper-submission/` before compiling:
+`elsarticle` ships with TeX Live, MiKTeX and Overleaf, so nothing needs downloading:
 
 ```bash
 cd paper-submission && pdflatex MainPaper && bibtex MainPaper && pdflatex MainPaper && pdflatex MainPaper
 ```
+
+The class is set to `review` (double spaced, line numbered) for submission. Switch to
+`preprint` or `5p` for a reading copy.
+
+### Submission history
+
+| Venue | Outcome |
+|---|---|
+| MDPI *Information* (information-4616315), submitted 23 Sep 2026 | Desk-rejected without review, 26 Sep 2026 |
+| Computers & Security | In preparation |
+
+The MDPI-formatted version and its compiled PDF are in the git history at commit `35304b3`.
 
 ### Where the numbers come from
 

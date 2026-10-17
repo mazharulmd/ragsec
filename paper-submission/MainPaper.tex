@@ -1,79 +1,50 @@
-\documentclass[information,article,submit,moreauthors]{Definitions/mdpi}
+%% =========================================================================
+%% RAGSec: A Defense Framework for RAG Under Adaptive Knowledge Poisoning
+%% Submission to Computers & Security (Elsevier).
+%%
+%% Compile:  pdflatex MainPaper && bibtex MainPaper && pdflatex MainPaper && pdflatex MainPaper
+%%
+%% The `review' option gives the double-spaced, line-numbered layout Elsevier asks for at
+%% submission. Switch to `preprint' or `5p' for a reading copy.
+%%
+%% Result values are generated from results/paper/*.jsonl by `ragsec figures'; no number in
+%% the text below is typed by hand. Figures are produced by the same command.
+%% =========================================================================
 
+\documentclass[review,12pt,authoryear]{elsarticle}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{changepage}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{url}
 
-\setlength{\headheight}{20pt}
-\addtolength{\topmargin}{-8pt}
+%% Ragged variants of tabularx's X column, used by the wider result tables.
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}X}
 
-\firstpage{1}
+%% The wide tables are wrapped in adjustwidth so they can use the margins where a journal
+%% style allows it. In this single-column layout the allowance is zero; raise it if a table
+%% overflows.
+\newlength{\extralength}
+\setlength{\extralength}{0pt}
+
+%% Keep algorithm line numbers unique across algorithms for hyperref.
 \makeatletter
-\setcounter{page}{\@firstpage}
 \renewcommand{\theHALG@line}{\thealgorithm.\arabic{ALG@line}}
 \makeatother
-\pubvolume{1}
-\issuenum{1}
-\articlenumber{0}
-\pubyear{2026}
-\copyrightyear{2026}
-\datereceived{}
-\daterevised{}
-\dateaccepted{}
-\datepublished{}
 
-\Title{RAGSec: A Defense Framework for RAG Under Adaptive Knowledge Poisoning}
+\journal{Computers \& Security}
 
-\newcommand{\orcidauthorA}{0000-0001-6225-1487}
-\newcommand{\orcidauthorB}{0009-0009-5289-5831}
-\newcommand{\orcidauthorC}{0009-0006-5092-3825}
-\Author{Md Mazharul Islam $^{1,}$*\orcidA{}, Mohona Islam Nidra $^{2}$\orcidB{} and Koushik Saha $^{3}$\orcidC{}}
-\AuthorNames{Md Mazharul Islam, Mohona Islam Nidra and Koushik Saha}
-\address{%
-$^{1}$ \quad Department of Electrical and Computer Engineering, North South University,
-Dhaka 1229, Bangladesh; mazharul.islam1@northsouth.edu\\
-$^{2}$ \quad Department of Computer Science and Engineering, Jahangirnagar University,
-Dhaka 1342, Bangladesh; mohonaislam1920@gmail.com\\
-$^{3}$ \quad Master of Science in Engineering Management (MSEM), Westcliff University,
-California, United States; k.saha.1024@westcliff.edu}
-
-\corres{Correspondence: mazharul.islam1@northsouth.edu}
-
-\abstract{Retrieval-augmented generation (RAG) grounds a language model in an
-external document collection, which moves part of the system's trust boundary out of the model
-weights and into a data pipeline. An adversary able to write to that pipeline can therefore
-influence model output without touching the model, through knowledge-base poisoning, indirect
-prompt injection, trigger backdoors or retrieval flooding. Defenses proposed against these
-threats are typically evaluated only against the published string construction of each attack
-and are reported as a single stack, so it is not known which control carries the security, nor
-whether any of it survives an adversary who has read the defense. This article addresses both
-gaps. We present an instrumented RAG framework with a four-layer defense, comprising
-ingestion-time source verification, calibrated retrieval filtering, provenance-weighted robust
-aggregation and anomaly monitoring, in which every layer can be enabled independently, and we
-introduce a defense-aware adaptive adversary decomposed into six individually switchable
-evasion techniques so that defensive failure can be attributed rather than merely observed.
-The evaluation spans three corpora (SQuAD, HotpotQA and a bundled corpus), a
-sentence-transformer retriever, seven configurations, five attacks and three seeds, and reports
-attack success restricted to the queries each configuration answers correctly with no adversary
-present. Against the four static attacks the layered defense performs as the literature
-predicts, reducing attack success from 0.95 to 0.00. Against the adaptive adversary the same
-stack fails: the retrieval filter's true-positive rate falls to at most 0.02 and its AUROC to between
-0.32 and 0.65, although the same filter reaches 0.97 to 1.00 against every static attack, and
-robust aggregation increases attack success because the adversary supplies the corroboration
-its redundancy weighting rewards. A leave-one-out ablation attributes the failure to three of
-the six techniques, each a low-cost rewriting choice, and a budget sweep prices the attack at
-two documents per target. Sweeping the detector threshold shows that no operating point serves
-both adversaries, since catching the adaptive attack requires discarding enough legitimate
-evidence to drive clean accuracy from 0.61 to 0.06. Binding ingestion to an unforgeable HMAC
-signature reduces adaptive attack success to 0.01 at no cost to clean accuracy and is the only
-control in the study that survives. We conclude that content-based heuristics belong in a RAG
-security architecture as detection rather than prevention, and that verifiable provenance
-belongs at its base.}
-
-\keyword{retrieval-augmented generation; knowledge poisoning; prompt injection; adaptive
-adversary; large language models; data provenance; anomaly detection; robust aggregation;
-AI supply chain security}
-
-
+%% Result values, generated from results/paper/*.jsonl by `ragsec figures'.
+%% Every number quoted in the text resolves through one of these.
 \newcommand{\asrStaticHotpotqanone}{0.95}
 \newcommand{\casrStaticHotpotqanone}{0.96}
 \newcommand{\asrAdaptiveHotpotqanone}{0.96}
@@ -417,6 +388,79 @@ AI supply chain security}
 \newcommand{\nSeeds}{3}
 
 \begin{document}
+
+\begin{frontmatter}
+
+\title{RAGSec: A Defense Framework for RAG Under Adaptive Knowledge Poisoning}
+
+\author[nsu]{Md Mazharul Islam\corref{cor1}}
+\ead{mazharul.islam1@northsouth.edu}
+
+\author[ju]{Mohona Islam Nidra}
+\ead{mohonaislam1920@gmail.com}
+
+\author[wu]{Koushik Saha}
+\ead{k.saha.1024@westcliff.edu}
+
+\cortext[cor1]{Corresponding author.}
+
+\affiliation[nsu]{organization={Department of Electrical and Computer Engineering,
+                                North South University},
+                  city={Dhaka},
+                  postcode={1229},
+                  country={Bangladesh}}
+
+\affiliation[ju]{organization={Department of Computer Science and Engineering,
+                               Jahangirnagar University},
+                 city={Dhaka},
+                 postcode={1342},
+                 country={Bangladesh}}
+
+\affiliation[wu]{organization={Master of Science in Engineering Management,
+                               Westcliff University},
+                 state={California},
+                 country={United States}}
+
+\begin{abstract}
+Retrieval-augmented generation (RAG) grounds a language model in an external document
+collection, which moves part of the system's trust boundary out of the model weights and into a
+data pipeline. An adversary able to write to that pipeline can therefore influence model output
+without touching the model, through knowledge-base poisoning, indirect prompt injection, trigger
+backdoors or retrieval flooding. Defenses proposed against these threats are typically evaluated
+only against the published string construction of each attack and are reported as a single
+stack, so it is not known which control carries the security, nor whether any of it survives an
+adversary who has read the defense. This article addresses both gaps. We present an instrumented
+RAG framework with a four-layer defense, comprising ingestion-time source verification,
+calibrated retrieval filtering, provenance-weighted robust aggregation and anomaly monitoring,
+in which every layer can be enabled independently, and we introduce a defense-aware adaptive
+adversary decomposed into six individually switchable evasion techniques so that defensive
+failure can be attributed rather than merely observed. The evaluation spans three corpora
+(SQuAD, HotpotQA and a bundled corpus), a sentence-transformer retriever, seven configurations,
+five attacks and three seeds, and reports attack success restricted to the queries each
+configuration answers correctly with no adversary present. Against the four static attacks the
+layered defense performs as the literature predicts, reducing attack success from 0.95 to 0.00.
+Against the adaptive adversary the same stack fails: the retrieval filter's true-positive rate
+falls to at most 0.02 and its AUROC to between 0.32 and 0.65, although the same filter reaches
+0.97 to 1.00 against every static attack, and robust aggregation increases attack success
+because the adversary supplies the corroboration its redundancy weighting rewards. A
+leave-one-out ablation attributes the failure to three of the six techniques, each a low-cost
+rewriting choice, and a budget sweep prices the attack at two documents per target. Sweeping the
+detector threshold shows that no operating point serves both adversaries, since catching the
+adaptive attack requires discarding enough legitimate evidence to drive clean accuracy from 0.61
+to 0.06. Binding ingestion to an unforgeable HMAC signature reduces adaptive attack success to
+0.01 at no cost to clean accuracy and is the only control in the study that survives. We
+conclude that content-based heuristics belong in a RAG security architecture as detection rather
+than prevention, and that verifiable provenance belongs at its base.
+\end{abstract}
+
+\begin{keyword}
+retrieval-augmented generation \sep knowledge poisoning \sep prompt injection \sep
+adaptive adversary \sep data provenance \sep large language models \sep
+AI supply chain security
+\end{keyword}
+
+\end{frontmatter}
+
 
 \section{Introduction}
 
@@ -1038,21 +1082,6 @@ passage is topically unrelated would let a filter achieve a low false-positive r
 wrong reason. A small bundled toy corpus is retained so that the entire study can be reproduced
 offline in seconds.
 
-% \begin{table}[H]
-% \small
-% \begin{adjustwidth}{-\extralength}{0cm}
-% \caption{Evaluation corpora. The document-to-question ratio indicates how much topically adjacent but non-answering material a retriever must sort through; HotpotQA contributes its distractor paragraphs, which is why its ratio is high.\label{tab:datasets}}
-% \begin{tabular}{lrrrrl}
-% \toprule
-% \textbf{Dataset} & \textbf{Documents} & \textbf{Questions} & \textbf{Mean words/doc} & \textbf{Docs/question} & \textbf{Source id}\\
-% \midrule
-% SQuAD & 300 & 300 & 100 & 1.0 & huggingface\\
-% HotpotQA & 1999 & 200 & 91 & 10.0 & hotpotqa\\
-% Toy corpus & 30 & 30 & 15 & 1.0 & curated-encyclopedia\\
-% \bottomrule
-% \end{tabular}
-% \end{adjustwidth}
-% \end{table}
 
 \begin{table}[H]
 \small
@@ -1823,33 +1852,42 @@ incident evidence, but the preventive control has to be verifiable provenance. T
 question for a retrieval pipeline is not primarily what a document says, since an adversary
 chooses that, but whether the pipeline can prove who put it there.
 
-\vspace{6pt}
 
-\authorcontributions{Conceptualization, M.I.; methodology, M.I.; software, K.S.; validation,
-M.I. and M.I.N.; formal analysis, M.I.; investigation, M.I. and M.I.N.; resources, M.I.N.;
-data curation, M.I.; writing---original draft preparation, M.I.; writing---review and editing,
-M.I., M.I.N. and K.S.; visualization, K.S.; supervision, M.I. All authors have read and
-agreed to the published version of the manuscript.}
+\section*{CRediT authorship contribution statement}
 
-\funding{This research received no external funding.}
+\textbf{Md Mazharul Islam:} Conceptualization, Methodology, Formal analysis, Investigation,
+Data curation, Writing -- original draft, Supervision.
+\textbf{Mohona Islam Nidra:} Validation, Investigation, Resources, Writing -- review and
+editing.
+\textbf{Koushik Saha:} Software, Visualization, Writing -- review and editing.
 
-\institutionalreview{Not applicable.}
+\section*{Declaration of competing interest}
 
-\informedconsent{Not applicable.}
+The authors declare that they have no known competing financial interests or personal
+relationships that could have appeared to influence the work reported in this paper.
 
-\dataavailability{The evaluation corpora are the publicly available SQuAD and HotpotQA
-datasets. The framework, attack and defense implementations, experiment suite, configuration
-files and raw result records are available from the corresponding author upon reasonable
-request. No new human or animal data were collected.}
+\section*{Declaration of generative AI and AI-assisted technologies in the writing process}
 
-\acknowledgments{During preparation of this manuscript an AI-assisted coding and writing tool
-was used to support implementation, experiment orchestration and drafting. The authors reviewed
-and edited all generated material and take full responsibility for the content.}
+During the preparation of this work the authors used an AI-assisted coding and writing tool to
+support implementation, experiment orchestration and drafting. After using this tool the authors
+reviewed and edited the content as needed and take full responsibility for the content of the
+published article.
 
-\conflictsofinterest{The authors declare no conflicts of interest.}
+\section*{Data availability}
 
-\abbreviations{Abbreviations}{%
-The following abbreviations are used in this manuscript:\par\medskip
+The framework, the attack and defense implementations, the experiment suite, the configuration
+files, the raw result records behind every reported number, and the code that generates every
+figure and table in this article are publicly available at
+\url{https://github.com/mazharulmd/ragsec}. The evaluation corpora are the publicly available
+SQuAD and HotpotQA datasets. No new human or animal data were collected.
+
+\section*{Acknowledgements}
+
+This research received no external funding.
+
+\appendix
+
+\section{Abbreviations}
 
 \noindent
 \begin{tabular}{@{}ll}
@@ -1862,15 +1900,10 @@ JS & Jensen--Shannon (divergence)\\
 LLM & Large language model\\
 QA & Question answering\\
 RAG & Retrieval-augmented generation\\
-TPR & True-positive rate
-\end{tabular}}
+TPR & True-positive rate\\
+\end{tabular}
 
-
-\begin{adjustwidth}{-\extralength}{0cm}
-\reftitle{References}
+\bibliographystyle{elsarticle-num}
 \bibliography{References}
-\end{adjustwidth}
 
-
-\PublishersNote{}
 \end{document}
