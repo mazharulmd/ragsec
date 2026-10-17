@@ -16,8 +16,8 @@ it to configuration or result records.
 ## What is already in place
 
 - The repository contains eight offline experiment result files with 2,322 JSONL records, plus
-  generated tables and figures. The default experiment suite is deterministic and intended to
-  reproduce those records.
+  generated tables and figures. The suite is deterministic and now pins its external datasets,
+  but the archived records were produced before revision metadata was captured.
 - The experiment suite includes a real-model confirmation study in code. It compares two
   models, four defense configurations and three attacks on a reduced SQuAD sample.
 - The manuscript has a limitations section that identifies the mock generator, small corpora,
@@ -54,6 +54,10 @@ it to configuration or result records.
    codebase, and the adaptive attack was designed against the evaluated defenses. The paper
    acknowledges this coupling; a second implementation or an independently designed adaptive
    attack would strengthen the central finding.
+6. **The archived dataset snapshots are unknown.** The suite now pins SQuAD and HotpotQA to
+   immutable Hub commits and records source, revision, configuration and split in new result
+   rows. Existing `results/paper/` rows predate that metadata; rerun the study before claiming
+   that its current numbers correspond to the newly pinned snapshots.
 
 ## Paper and artifact cleanup
 
@@ -62,8 +66,8 @@ it to configuration or result records.
   manuscript flattener is only a cross-check. All 341 result macros in the current submission
   match the regenerated macro file exactly.
 - Record exact corpus snapshots/splits, embedding model and package versions, run command, and
-  random seeds in a compact reproducibility appendix. Dependency ranges and live dataset
-  loaders alone do not pin a reproducible environment.
+  random seeds in a compact reproducibility appendix. Dataset pins are now in the suite, but
+  dependency versions and the archived dataset snapshots remain unresolved.
 - Include clean utility and false-positive costs beside attack reductions wherever space allows;
   the defense's utility trade-off is central to interpreting the results.
 - If confirmation results are added, update the limitations and abstract/conclusion together,

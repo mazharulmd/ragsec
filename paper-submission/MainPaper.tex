@@ -1085,6 +1085,10 @@ passage is topically unrelated would let a filter achieve a low false-positive r
 wrong reason. A small bundled toy corpus is retained so that the entire study can be reproduced
 offline in seconds.
 
+The committed result rows predate dataset revision tracking, so they do not identify the exact
+Hub snapshots used for SQuAD and HotpotQA. The runner now pins both datasets to immutable Hub
+commits for future runs, but the reported results have not been regenerated against those pins.
+
 
 \begin{table*}[t]
 \scriptsize

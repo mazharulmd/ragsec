@@ -4,7 +4,7 @@ Each study below answers one question and writes one JSONL file under ``results/
 
 ===========================  ==================================================================
 ``main``                     How much does each layer, and the full stack, reduce attack success
-                             on each dataset? Repeated over seeds so that rates carry intervals.
+                             on each dataset? Repeated over seeds to measure seed variability.
 ``evasion``                  Which evasion technique is responsible for the adaptive attacker's
                              success? One technique is disabled per cell.
 ``budget``                   How does attack success scale with the adversary's upload budget?
@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ragsec.eval.data import HOTPOTQA_REVISION, SQUAD_REVISION
 from ragsec.eval.metrics import rate_with_ci
 from ragsec.eval.runner import CLEAN_RUN, ExperimentConfig, ExperimentRunner
 
@@ -41,8 +42,20 @@ from ragsec.eval.runner import CLEAN_RUN, ExperimentConfig, ExperimentRunner
 # ---------------------------------------------------------------------------
 
 DATASETS: dict[str, dict[str, Any]] = {
-    "squad": {"name": "hf", "path": "rajpurkar/squad", "limit": 300},
-    "hotpotqa": {"name": "hotpotqa", "limit": 200},
+    "squad": {
+        "name": "hf",
+        "path": "rajpurkar/squad",
+        "split": "validation",
+        "revision": SQUAD_REVISION,
+        "limit": 300,
+    },
+    "hotpotqa": {
+        "name": "hotpotqa",
+        "config": "distractor",
+        "split": "validation",
+        "revision": HOTPOTQA_REVISION,
+        "limit": 200,
+    },
     "toy": {"name": "toy"},
 }
 
@@ -215,10 +228,19 @@ def _row(cell: Cell, result: Any, wall_s: float) -> dict[str, Any]:
         r.correct for r in attacked
     ]
     _, acc_low, acc_high = rate_with_ci(acc_flags)
+    dataset_spec = cell.config.dataset
+    dataset_name = dataset_spec.get("name", "toy")
+    dataset_source = dataset_spec.get("path") or (
+        "hotpotqa/hotpot_qa" if dataset_name in {"hotpot", "hotpotqa"} else dataset_name
+    )
     return {
         "study": cell.study,
         **cell.key,
         **cell.extra,
+        "dataset_source": dataset_source,
+        "dataset_config": dataset_spec.get("config"),
+        "dataset_revision": dataset_spec.get("revision"),
+        "dataset_split": dataset_spec.get("split"),
         "attack": result.attack,
         "n_alerts": len(result.alerts),
         "alert_kinds": sorted({a["kind"] for a in result.alerts}),
@@ -248,7 +270,15 @@ def run_cell(cell: Cell) -> list[dict[str, Any]]:
 
 
 def cell_id(cell: Cell) -> str:
-    return json.dumps({"study": cell.study, **cell.key, **cell.extra}, sort_keys=True)
+    return json.dumps(
+        {
+            "study": cell.study,
+            **cell.key,
+            **cell.extra,
+            "dataset_spec": cell.config.dataset,
+        },
+        sort_keys=True,
+    )
 
 
 def run_study(

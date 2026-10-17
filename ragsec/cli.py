@@ -244,7 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_suite.add_argument("--studies", nargs="*", default=[], help="subset of studies to run")
     p_suite.add_argument("--datasets", nargs="*", default=[], help="subset of datasets")
     p_suite.add_argument("--seeds", nargs="*", type=int, default=[], help="random seeds")
-    p_suite.add_argument("--output-dir", default="results/paper")
+    p_suite.add_argument("--output-dir", default="results/paper-pinned")
     p_suite.add_argument("--no-resume", action="store_true", help="recompute finished cells")
     p_suite.add_argument(
         "--models", nargs="*", default=[],
@@ -271,7 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_suite.set_defaults(func=cmd_suite)
 
     p_fig = sub.add_parser("figures", help="build the paper's tables and figures from results")
-    p_fig.add_argument("--results-dir", default="results/paper")
+    p_fig.add_argument("--results-dir", default="results/paper-pinned")
     p_fig.add_argument("--output-dir", default="paper")
     p_fig.add_argument("--manuscript", default="paper/preview.tex")
     p_fig.add_argument("--no-check", action="store_true", help="skip the manuscript checks")

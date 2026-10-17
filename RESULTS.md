@@ -1,11 +1,14 @@
 # Experimental Results
 
-Narrative summary of the evaluation. The authoritative numbers are the generated tables in
-`paper/tables/` and the raw records in `results/paper/*.jsonl`; regenerate both with:
+Narrative summary of the archived evaluation. The tables in `paper/tables/` and records in
+`results/paper/*.jsonl` reproduce the submitted numbers, but those records predate dataset
+revision tracking. New pinned reruns go to `results/paper-pinned/` and should be reported
+separately until the paper's results have been regenerated from that snapshot.
+
+Regenerate the archived tables from the committed records with:
 
 ```bash
-ragsec suite
-ragsec figures
+ragsec figures --results-dir results/paper
 ```
 
 ## Setup
