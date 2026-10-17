@@ -142,35 +142,45 @@ def agg_spread(rows: Sequence[Row], keys: Sequence[str], field: str) -> dict[tup
     return {k: (max(v) - min(v)) / 2.0 for k, v in buckets.items() if v}
 
 
-def pooled_ci(
+def seed_summary(
     rows: Sequence[Row],
     keys: Sequence[str],
     rate_field: str = "attack_success_rate",
     n_field: str = "n_attacked",
 ) -> dict[tuple, tuple[float, float, float]]:
-    """Pool attacked queries across seeds and return ``(rate, lo, hi)`` per key.
+    """Return pooled rate and minimum/maximum per-seed rates for each key.
 
-    Pooling is the right operation here: seeds differ only in which decoy answers are drawn,
-    so the per-seed runs are exchangeable Bernoulli samples of the same quantity. Pass
-    ``rate_field="conditional_asr"`` with ``n_field="n_baseline_correct"`` to pool the
-    attack-attributable rate instead.
+    Rows retain only seed-level aggregates, not per-question outcomes. We therefore summarize
+    between-seed variability rather than treating repeated questions as independent Bernoulli
+    trials. The point estimate pools numerator and denominator across seeds; when multiple
+    attack rows share a seed and key, ``n_field`` weights their rates within that seed. The
+    endpoints are the observed seed range, not a confidence interval. Pass
+    ``rate_field="conditional_asr"`` with ``n_field="n_baseline_correct"`` for
+    attack-attributable rates.
     """
-    from ragsec.eval.metrics import wilson_interval
-
-    successes: dict[tuple, int] = defaultdict(int)
-    totals: dict[tuple, int] = defaultdict(int)
+    by_seed: dict[tuple[tuple, Any], list[float]] = defaultdict(lambda: [0.0, 0.0])
     for row in rows:
-        asr = row.get(rate_field)
-        n = row.get(n_field) or 0
-        if asr is None or not n:
+        rate = row.get(rate_field)
+        count = row.get(n_field) or 0
+        if rate is None or not count:
             continue
         key = tuple(row[k] for k in keys)
-        successes[key] += round(float(asr) * n)
-        totals[key] += int(n)
+        seed_key = (key, row.get("seed"))
+        by_seed[seed_key][0] += float(rate) * int(count)
+        by_seed[seed_key][1] += int(count)
+    per_key: dict[tuple, list[tuple[float, float]]] = defaultdict(list)
+    for (key, _seed), (weighted_sum, total) in by_seed.items():
+        if total:
+            per_key[key].append((weighted_sum, total))
     out = {}
-    for key, total in totals.items():
-        lo, hi = wilson_interval(successes[key], total)
-        out[key] = (successes[key] / total, lo, hi)
+    for key, seed_counts in per_key.items():
+        rates = [successes / total for successes, total in seed_counts]
+        out[key] = (
+            sum(successes for successes, _total in seed_counts)
+            / sum(total for _successes, total in seed_counts),
+            min(rates),
+            max(rates),
+        )
     return out
 
 
@@ -376,7 +386,7 @@ def fig_asr_heatmap(rows: list[Row], out_dir: Path) -> Path:
     import numpy as np
 
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "config", "attack"])
+    values = seed_summary(rows, ["dataset", "config", "attack"])
     fig, axes = plt.subplots(1, len(datasets), figsize=(7.1, 2.9), squeeze=False)
     for ax, dataset in zip(axes[0], datasets, strict=False):
         grid = np.full((len(CONFIG_ORDER), len(ATTACK_ORDER)), np.nan)
@@ -408,12 +418,12 @@ def fig_asr_heatmap(rows: list[Row], out_dir: Path) -> Path:
 
 
 def fig_asr_bars(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
-    """Headline comparison with Wilson intervals: undefended, defended, signed ingestion."""
+    """Headline comparison with observed min--max seed ranges."""
     import matplotlib.pyplot as plt
     import numpy as np
 
     subset = [r for r in rows if r["dataset"] == dataset]
-    values = pooled_ci(subset, ["config", "attack"])
+    values = seed_summary(subset, ["config", "attack"])
     configs = ["none", "L2", "L3", "full", "full_signed"]
     width = 0.16
     x = np.arange(len(ATTACK_ORDER))
@@ -444,7 +454,7 @@ def fig_evasion(rows: list[Row], out_dir: Path) -> Path:
     import numpy as np
 
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "config", "disabled"])
+    values = seed_summary(rows, ["dataset", "config", "disabled"])
     order = ["none", *EVASION_LABELS]
     labels = ["All techniques enabled"] + [
         f"without: {EVASION_LABELS[k].lower()}" for k in EVASION_LABELS
@@ -480,7 +490,7 @@ def fig_budget(rows: list[Row], out_dir: Path) -> Path:
     import matplotlib.pyplot as plt
 
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "config", "attack", "n_per_target"],
+    values = seed_summary(rows, ["dataset", "config", "attack", "n_per_target"],
                        "conditional_asr", "n_baseline_correct")
     budgets = sorted({r["n_per_target"] for r in rows})
     series = [
@@ -578,9 +588,9 @@ def fig_threshold(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
          "Filter FPR, clean traffic", C_ATTACK, "s", "-"),
         (agg(clean_rows, ["threshold"], "clean_accuracy"),
          "Clean accuracy", C_UTILITY, "^", "-"),
-        (pooled_ci(static_rows, ["threshold"], "conditional_asr", "n_baseline_correct"),
+        (seed_summary(static_rows, ["threshold"], "conditional_asr", "n_baseline_correct"),
          "Attributable ASR, static", C_DEFENSE, "D", "-"),
-        (pooled_ci(adaptive_rows, ["threshold"], "conditional_asr", "n_baseline_correct"),
+        (seed_summary(adaptive_rows, ["threshold"], "conditional_asr", "n_baseline_correct"),
          "Attributable ASR, adaptive", "#111111", "X", (0, (4, 2))),
     ]
 
@@ -626,7 +636,7 @@ def fig_backfill(
         subset = [r for r in source if r["dataset"] == dataset]
         multipliers = sorted({r["candidate_multiplier"] for r in subset})
         clean_rows = [r for r in subset if r["attack"] == "clean"]
-        asr = pooled_ci([r for r in subset if r["attack"] in static],
+        asr = seed_summary([r for r in subset if r["attack"] in static],
                         ["candidate_multiplier"], "conditional_asr", "n_baseline_correct")
         acc = agg(clean_rows, ["candidate_multiplier"], "clean_accuracy")
         abstain = agg(clean_rows, ["candidate_multiplier"], "abstention_rate")
@@ -673,10 +683,9 @@ def fig_provenance(rows: list[Row], out_dir: Path) -> Path:
     import numpy as np
 
     order = ["open", "trust_only", "allowlist", "quota", "signed"]
-    labels = ["None", "Trust\nthreshold", "Source\nallowlist", "Allowlist\n+ quota",
-              "HMAC\nsignature"]
+    labels = ["None", "Trust", "Allowlist", "Quota", "HMAC"]
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "variant", "attack"])
+    values = seed_summary(rows, ["dataset", "variant", "attack"])
     x = np.arange(len(order))
     fig, axes = plt.subplots(1, len(datasets), figsize=(7.1, 2.5), squeeze=False, sharey=True)
     for ax, dataset in zip(axes[0], datasets, strict=False):
@@ -702,7 +711,8 @@ def fig_provenance(rows: list[Row], out_dir: Path) -> Path:
                         yerr=[[e[0] for e in errs], [e[1] for e in errs]],
                         fmt="none", ecolor="#333333", elinewidth=0.6, capsize=1.4)
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, fontsize=6.6)
+        ax.set_xticklabels(labels, fontsize=6.0, rotation=20, ha="right",
+                           rotation_mode="anchor")
         ax.set_ylim(0, 1.08)
         ax.set_title(DATASET_LABELS[dataset], fontsize=8.5)
     axes[0][0].set_ylabel("Attack success rate")
@@ -758,7 +768,7 @@ def fig_risk_coverage(rows: list[Row], out_dir: Path) -> Path:
             (static, "o", "vs. static attacks", "none"),
             (["adaptive_poison"], "X", "vs. adaptive attack", "#111111"),
         ):
-            pooled = pooled_ci(
+            pooled = seed_summary(
                 [r for r in rows if r["dataset"] == dataset and r["attack"] in attack_set],
                 ["config"], "conditional_asr", "n_baseline_correct",
             )
@@ -810,7 +820,7 @@ def fig_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
     subset = [r for r in rows if r["dataset"] == dataset]
     # Attributable rates, so that the suppression attack is not credited with the pipeline's
     # own errors -- the comparison here is specifically about attack effectiveness.
-    values = pooled_ci(subset, ["config", "follow_injections", "attack"], "conditional_asr",
+    values = seed_summary(subset, ["config", "follow_injections", "attack"], "conditional_asr",
                        "n_baseline_correct")
     x = np.arange(len(ATTACK_ORDER))
     fig, ax = plt.subplots(figsize=(4.6, 2.7))
@@ -873,8 +883,8 @@ def tab_datasets(out_dir: Path) -> Path:
 
 def tab_main(rows: list[Row], out_dir: Path) -> Path:
     """ASR for every configuration and attack, raw and attack-attributable."""
-    values = pooled_ci(rows, ["dataset", "config", "attack"])
-    attributable = pooled_ci(rows, ["dataset", "config", "attack"], "conditional_asr",
+    values = seed_summary(rows, ["dataset", "config", "attack"])
+    attributable = seed_summary(rows, ["dataset", "config", "attack"], "conditional_asr",
                              "n_baseline_correct")
     clean = agg([r for r in rows if r["attack"] == "clean"], ["dataset", "config"],
                 "clean_accuracy")
@@ -897,14 +907,14 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
     return _write(
         out_dir / "tab_main.tex",
         latex_table(
-            "Attack success rate by defense configuration, pooled over attacked queries from "
-            "all seeds. Each cell reads \\emph{raw} (\\emph{attack-attributable}), the latter "
+            "Attack success rate by defense configuration, pooled over query-seed trials. "
+            "Each cell reads \\emph{raw} (\\emph{attack-attributable}), the latter "
             "restricted to queries the same configuration answered correctly with no adversary "
             "present. The two diverge only for the suppression attack, whose raw rate absorbs "
             "the pipeline's own error rate; this is most visible on HotpotQA, where multi-hop "
-            "questions depress clean accuracy. Confidence intervals are shown in "
-            "Figure~\\ref{fig:bars}. The last column is clean accuracy on the unattacked "
-            "corpus, i.e.\\ the utility cost of the configuration.",
+            "questions depress clean accuracy. Figure~\\ref{fig:bars} shows the observed "
+            "minimum-to-maximum range across seeds. The last column is clean accuracy on the "
+            "unattacked corpus, i.e.\\ the utility cost of the configuration.",
             "tab:main",
             ["Configuration", *[ATTACK_LABELS[a] for a in ATTACK_ORDER], "Clean acc."],
             body,
@@ -916,8 +926,8 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
 def tab_full(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
     """Detailed behaviour of the two strongest configurations."""
     subset = [r for r in rows if r["dataset"] == dataset]
-    values = pooled_ci(subset, ["config", "attack"])
-    conditional = pooled_ci(
+    values = seed_summary(subset, ["config", "attack"])
+    conditional = seed_summary(
         subset, ["config", "attack"], "conditional_asr", "n_baseline_correct"
     )
     body: list[list[str]] = []
@@ -965,7 +975,7 @@ def tab_full(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
 def tab_evasion(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
     """Which evasion technique the adaptive attacker actually needs."""
     subset = [r for r in rows if r["dataset"] == dataset]
-    values = pooled_ci(subset, ["config", "disabled"])
+    values = seed_summary(subset, ["config", "disabled"])
     tpr = agg(subset, ["config", "disabled"], "filter_tpr")
     retrieved = agg(subset, ["config", "disabled"], "poison_retrieval_rate")
     accuracy = agg(subset, ["config", "disabled"], "attacked_accuracy")
@@ -989,7 +999,8 @@ def tab_evasion(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
             "Leave-one-out ablation of the adaptive attacker's evasion techniques on "
             f"{DATASET_LABELS[dataset]} ($3$ poisoned documents per target). Each row disables "
             "one technique and leaves the other five in place, so a drop in ASR identifies a "
-            "technique the defense depends on the adversary \\emph{not} using.",
+            "technique the defense depends on the adversary \\emph{not} using. Bracketed "
+            "values give the observed min-to-max range across seeds, not a confidence interval.",
             "tab:evasion",
             ["Adaptive attacker variant", "ASR (full)", "Poison retr.", "Filter TPR",
              "Accuracy", "ASR (signed)"],
@@ -1010,7 +1021,7 @@ def tab_provenance(rows: list[Row], out_dir: Path) -> Path:
         "signed": "HMAC-signed ingestion (allowlist $+$ signature)",
     }
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "variant", "attack"])
+    values = seed_summary(rows, ["dataset", "variant", "attack"])
     rejected = agg(rows, ["dataset", "variant", "attack"], "poison_docs_rejected")
     body = []
     for variant in order:
@@ -1122,7 +1133,7 @@ def tab_latency(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
 def tab_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
     """Attack success with a susceptible and with a hardened generator."""
     subset = [r for r in rows if r["dataset"] == dataset]
-    values = pooled_ci(subset, ["config", "follow_injections", "attack"], "conditional_asr",
+    values = seed_summary(subset, ["config", "follow_injections", "attack"], "conditional_asr",
                        "n_baseline_correct")
     body = []
     for attack in ATTACK_ORDER:
@@ -1257,8 +1268,8 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
     def macro(name: str, value: str) -> None:
         lines.append(f"\\newcommand{{\\{macro_name(name)}}}{{{value}}}")
 
-    values = pooled_ci(main, ["dataset", "config", "attack"])
-    attributable = pooled_ci(main, ["dataset", "config", "attack"], "conditional_asr",
+    values = seed_summary(main, ["dataset", "config", "attack"])
+    attributable = seed_summary(main, ["dataset", "config", "attack"], "conditional_asr",
                              "n_baseline_correct")
     static = [a for a in ATTACK_ORDER if a != "adaptive_poison"]
     for dataset in {r["dataset"] for r in main}:
@@ -1276,7 +1287,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
                 ("casrStatic",
                  {"rate_field": "conditional_asr", "n_field": "n_baseline_correct"}),
             ):
-                pooled = pooled_ci(static_rows, [], **kwargs)
+                pooled = seed_summary(static_rows, [], **kwargs)
                 if pooled.get(()):
                     macro(f"{prefix}{suffix}", f"{pooled[()][0]:.2f}")
             hit = values.get((dataset, config, "adaptive_poison"))
@@ -1299,7 +1310,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
                       f"{clean[(config,)]:.2f}")
 
     if evasion:
-        ev = pooled_ci([r for r in evasion if r["dataset"] == "squad"], ["config", "disabled"])
+        ev = seed_summary([r for r in evasion if r["dataset"] == "squad"], ["config", "disabled"])
         for key in ["none", *EVASION_LABELS]:
             for config in ("full", "full_signed"):
                 hit = ev.get((config, key))
@@ -1308,11 +1319,11 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
                     macro(f"evasion{config.replace('_', '').capitalize()}{name}",
                           f"{hit[0]:.2f}")
     if provenance:
-        pv = pooled_ci([r for r in provenance if r["dataset"] == "squad"],
+        pv = seed_summary([r for r in provenance if r["dataset"] == "squad"],
                        ["variant", "attack"])
         # The quota rung behaves differently per corpus (it is a volume control, so what
         # matters is the campaign-to-corpus ratio), so the prose quotes a second dataset.
-        hotpot = pooled_ci([r for r in provenance if r["dataset"] == "hotpotqa"],
+        hotpot = seed_summary([r for r in provenance if r["dataset"] == "hotpotqa"],
                            ["variant", "attack"])
         for variant in ("quota", "signed"):
             hit = hotpot.get((variant, "adaptive_poison"))
@@ -1355,7 +1366,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
         squad = [r for r in threshold_rows if r["dataset"] == "squad"]
         adaptive = agg([r for r in squad if r["attack"] == "adaptive_poison"],
                        ["threshold"], "filter_tpr")
-        adaptive_asr = pooled_ci([r for r in squad if r["attack"] == "adaptive_poison"],
+        adaptive_asr = seed_summary([r for r in squad if r["attack"] == "adaptive_poison"],
                                  ["threshold"], "conditional_asr", "n_baseline_correct")
         clean = agg([r for r in squad if r["attack"] == "clean"], ["threshold"],
                     "clean_accuracy")
@@ -1382,7 +1393,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
             for attack, aname in (("adaptive_poison", "Adaptive"), ("poisoned_rag", "Static")):
                 for config, cname in (("none", "None"), ("full", "Full"),
                                       ("full_signed", "Signed")):
-                    pooled = pooled_ci(
+                    pooled = seed_summary(
                         [r for r in budget if r["dataset"] == dataset
                          and r["config"] == config and r["attack"] == attack],
                         ["n_per_target"], "conditional_asr", "n_baseline_correct",
@@ -1403,7 +1414,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
         abstain = agg(clean, ["candidate_multiplier"], "abstention_rate")
         fpr = agg(clean, ["candidate_multiplier"], "filter_fpr")
         latency = agg(source, ["candidate_multiplier"], "p95_latency_ms")
-        asr = pooled_ci([r for r in source if r["attack"] in static_attacks],
+        asr = seed_summary([r for r in source if r["attack"] in static_attacks],
                         ["candidate_multiplier"], "conditional_asr", "n_baseline_correct")
         for m, edge in ((1, "Lo"), (20, "Hi")):
             if (m,) in acc:

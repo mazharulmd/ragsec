@@ -35,11 +35,11 @@ it to configuration or result records.
    empirical validation. The default study uses two models and roughly 3,200 completion calls
    for one SQuAD seed; estimate provider cost and record exact model IDs, endpoint/provider,
    date, sample count and failures with any run.
-2. **Confidence intervals pool repeated queries across seeds.** The manuscript reports Wilson
-   intervals over pooled attacked queries. The same QA questions are reused across seeds, so
-   those observations are not necessarily independent. Report per-seed variability and consider
-   query-clustered bootstrap intervals (or another method that preserves query as the sampling
-   unit) alongside pooled estimates.
+2. **Query-level uncertainty remains unavailable.** The manuscript retains pooled rates as
+   descriptive estimates and adds the observed minimum-to-maximum range across seeds, rather
+   than treating repeated questions as independent Wilson trials. The stored records contain
+   only per-seed aggregates, so they cannot support a query-clustered bootstrap. Persist
+   per-question outcomes and rerun the study before making population-level uncertainty claims.
 3. **The measured corpus scale is small.** The evaluated corpora contain 30 to 1,999 documents,
    and the paper itself notes that this does not establish behavior at enterprise index scale.
    Either add a larger-corpus/scale sensitivity experiment or make the boundary prominent in the

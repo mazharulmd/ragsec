@@ -557,14 +557,12 @@ assumption. Section~\ref{sec:limitations} discusses what this choice does not te
 \label{sec:metrics}
 
 We report attack success rate (ASR), the fraction of attacked queries meeting the adversary's
-goal from Section~\ref{sec:threat}, with 95\% Wilson score intervals~\citep{wilson1927} over
-attacked query-seed trials pooled across seeds. The same questions recur across seeds, so these
-intervals are descriptive of the observed query-seed trials and should not be interpreted as
-population-level intervals over independent questions; per-seed rates remain available in the
-released result records. Wilson intervals are used rather than the normal
-approximation because the rates here sit routinely at or near $0$ and $1$, where the Wald
-interval degenerates to zero width and would misreport ``no successes in $n$ trials'' as
-certainty~\citep{brown2001interval}.
+goal from Section~\ref{sec:threat}. Point estimates pool query-seed trials descriptively, and
+figure error bars show the observed minimum-to-maximum range across seed-level rates. The same
+questions recur across seeds, so the pooled observations are not independent. The ranges
+describe variation across the experiment's random seeds; they are not confidence intervals over
+a population of questions. The released result files retain only seed-level aggregates, so
+query-clustered uncertainty remains unmeasured.
 
 For suppression attacks the unconditional ASR is inflated by the pipeline's own errors: a query
 the system was going to get wrong anyway is counted as a successful suppression. We therefore
@@ -607,8 +605,9 @@ command rather than transcribed.
 \section{Results}
 \label{sec:results}
 
-All rates are pooled over attacked queries from \nSeeds{} seeds and reported with 95\% Wilson
-intervals. Unless a subsection says otherwise, figures show SQuAD and the corresponding
+Attack-success point estimates pool query-seed trials from \nSeeds{} seeds; other summary
+metrics average per-seed results. Figure error bars show the observed min-to-max range across
+seeds. Unless a subsection says otherwise, figures show SQuAD and the corresponding
 HotpotQA and toy-corpus panels are included where they differ materially.
 
 \subsection{The Undefended Pipeline}
@@ -660,7 +659,8 @@ grid does not change colour.\label{fig:heatmap}}
 
 \begin{figure}[H]
 \includegraphics[width=\textwidth]{\paperdir figures/fig3_asr_bars.pdf}
-\caption{Attack success on SQuAD with 95\% Wilson intervals. Static attacks are neutralised by
+\caption{Attack success on SQuAD; error bars show the observed min-to-max range across seeds.
+Static attacks are neutralised by
 retrieval filtering and by the full stack; the adaptive attack is not affected by any
 content-based configuration, and only signature-bound ingestion (green) removes
 it.\label{fig:bars}}
@@ -685,8 +685,8 @@ and use the attributable rate whenever a suppression adversary is involved.
 
 The adaptive adversary changes the picture completely. On SQuAD its attributable success rate
 is \casrAdaptiveSquadnone{} against the undefended pipeline and \casrAdaptiveSquadfull{}
-against the full four-layer stack. That is not a reduction but, within the interval, no
-change at all.
+against the full four-layer stack. The pooled rates show no reduction, and the observed values
+agree across seeds.
 Layer~2's true-positive rate against it falls to zero (Table~\ref{tab:full}): the filter does
 not flag a single poisoned passage, while its false-positive rate on legitimate evidence is
 unchanged. The same filter attains high detection scores against every static attack

@@ -1,6 +1,6 @@
 \begin{table}[H]
 \small
-\caption{Attack success rate by defense configuration, pooled over attacked queries from all seeds. Each cell reads \emph{raw} (\emph{attack-attributable}), the latter restricted to queries the same configuration answered correctly with no adversary present. The two diverge only for the suppression attack, whose raw rate absorbs the pipeline's own error rate; this is most visible on HotpotQA, where multi-hop questions depress clean accuracy. Confidence intervals are shown in Figure~\ref{fig:bars}. The last column is clean accuracy on the unattacked corpus, i.e.\ the utility cost of the configuration.\label{tab:main}}
+\caption{Attack success rate by defense configuration, pooled over query-seed trials. Each cell reads \emph{raw} (\emph{attack-attributable}), the latter restricted to queries the same configuration answered correctly with no adversary present. The two diverge only for the suppression attack, whose raw rate absorbs the pipeline's own error rate; this is most visible on HotpotQA, where multi-hop questions depress clean accuracy. Figure~\ref{fig:bars} shows the observed minimum-to-maximum range across seeds. The last column is clean accuracy on the unattacked corpus, i.e.\ the utility cost of the configuration.\label{tab:main}}
 \begin{tabular}{lcccccc}
 \toprule
 \textbf{Configuration} & \textbf{PoisonedRAG} & \textbf{Trigger backdoor} & \textbf{Prompt injection} & \textbf{Context flooding} & \textbf{Adaptive poisoning} & \textbf{Clean acc.}\\

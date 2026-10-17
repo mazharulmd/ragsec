@@ -14,7 +14,9 @@ Three corpora (SQuAD, HotpotQA with distractors, a bundled toy corpus), a
 `all-MiniLM-L6-v2` retriever over an exact inner-product index, `top_k = 3` with a candidate
 multiplier of 10, and a deterministic mock generator that answers extractively and — unless
 hardened — obeys instructions found in retrieved text. Seven configurations, five attacks,
-three seeds. Rates are pooled over attacked queries and reported with 95% Wilson intervals.
+three seeds. Point estimates pool query-seed trials descriptively; figure error bars show the
+observed minimum-to-maximum range across seeds. Since the same questions recur across seeds,
+these ranges measure seed variability rather than population-level uncertainty over questions.
 
 Two metrics matter for reading what follows:
 
