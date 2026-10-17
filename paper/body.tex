@@ -554,7 +554,10 @@ assumption. Section~\ref{sec:limitations} discusses what this choice does not te
 
 We report attack success rate (ASR), the fraction of attacked queries meeting the adversary's
 goal from Section~\ref{sec:threat}, with 95\% Wilson score intervals~\citep{wilson1927} over
-attacked queries pooled across seeds. Wilson intervals are used rather than the normal
+attacked query-seed trials pooled across seeds. The same questions recur across seeds, so these
+intervals are descriptive of the observed query-seed trials and should not be interpreted as
+population-level intervals over independent questions; per-seed rates remain available in the
+released result records. Wilson intervals are used rather than the normal
 approximation because the rates here sit routinely at or near $0$ and $1$, where the Wald
 interval degenerates to zero width and would misreport ``no successes in $n$ trials'' as
 certainty~\citep{brown2001interval}.
@@ -1120,7 +1123,7 @@ and open-weight models is the most important next step, and we expect the adapti
 advantage to shrink but not vanish, since a model asked to ground its answer in a corroborated
 retrieved claim has little basis for refusing.
 
-Our corpora are hundreds of documents, not the millions of an enterprise index. Scale affects
+Our corpora range from 30 to 1,999 documents, far below the millions in an enterprise index. Scale affects
 the similarity-outlier filter, which estimates corpus statistics, and it affects how easily a
 poisoned passage reaches the top-$k$ for a query. It does not obviously affect the central
 result, since provenance spoofing is scale-independent, but this is an assumption rather than a
@@ -1137,6 +1140,10 @@ Attacks and defenses were implemented in the same codebase, which risks benchmar
 mitigated this by exposing evasion techniques as independent switches and reporting per-layer
 attribution rather than aggregate scores, so a reader can see which defensive assumption each
 result depends on, but independent reimplementation would be stronger evidence.
+
+The signature result assumes the signing key is protected and only authorized sources can
+request signatures. The experiment models that boundary with a shared HMAC key unavailable to
+the attacker; it does not test key compromise or poisoning by a malicious authorized publisher.
 
 Finally, reported latencies exclude external model and network cost, and the abstention
 behaviour we report is a property of our aggregation thresholds rather than a calibrated
