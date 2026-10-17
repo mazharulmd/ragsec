@@ -234,9 +234,27 @@ class OpenAICompatibleLLM(BaseLLM):
         self.max_tokens = max_tokens
         self.max_retries = max_retries
         self.backoff = backoff
+        self.api_key_env = api_key_env
         self.cache = ResponseCache(cache_path) if cache_path else None
         self.calls = 0
         self.retries = 0
+
+    @staticmethod
+    def _describe(exc: urllib.error.HTTPError) -> str:
+        """Pull the provider's error message out of the response body."""
+        try:
+            raw = exc.read().decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001 - the body may already be consumed
+            return ""
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return raw.strip()[:400]
+        error = payload.get("error", payload)
+        if isinstance(error, dict):
+            parts = [str(error[k]) for k in ("message", "code", "type") if error.get(k)]
+            return " | ".join(parts)[:400]
+        return str(error)[:400]
 
     def _request(self, messages: list[dict[str, str]]) -> str:
         body = json.dumps(
@@ -282,7 +300,22 @@ class OpenAICompatibleLLM(BaseLLM):
             except urllib.error.HTTPError as exc:
                 last = exc
                 if exc.code not in self.RETRY_STATUS or attempt == self.max_retries:
-                    raise
+                    detail = self._describe(exc)
+                    hint = ""
+                    if exc.code in (401, 403):
+                        hint = (
+                            f" Check that {self.api_key_env} holds a valid key for "
+                            f"{self.base_url} and that the key has not been revoked."
+                        )
+                    elif exc.code == 404:
+                        hint = (
+                            f" Check that the model {self.model!r} exists at "
+                            f"{self.base_url}."
+                        )
+                    raise RuntimeError(
+                        f"{self.base_url} returned HTTP {exc.code} for model "
+                        f"{self.model!r}: {detail or exc.reason}.{hint}"
+                    ) from exc
                 # Honour Retry-After when the server sends one, otherwise back off.
                 retry_after = exc.headers.get("Retry-After") if exc.headers else None
                 delay = (

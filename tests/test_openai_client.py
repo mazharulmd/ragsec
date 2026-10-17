@@ -146,9 +146,29 @@ def test_client_error_is_not_retried(client, monkeypatch) -> None:
 
     monkeypatch.setattr(client, "_request", bad_request)
     monkeypatch.setattr("ragsec.core.llm.time.sleep", lambda s: None)
-    with pytest.raises(urllib.error.HTTPError):
+    with pytest.raises(RuntimeError, match="HTTP 400"):
         client.generate("q")
     assert attempts["n"] == 1, "a malformed request will not fix itself"
+
+
+def test_auth_failure_names_the_variable_and_endpoint(client, monkeypatch) -> None:
+    """A 403 is the one error a user must act on, so it has to say what to check."""
+    monkeypatch.setattr(client, "_request", lambda m: (_ for _ in ()).throw(_http_error(403)))
+    monkeypatch.setattr("ragsec.core.llm.time.sleep", lambda s: None)
+    with pytest.raises(RuntimeError) as excinfo:
+        client.generate("q")
+    message = str(excinfo.value)
+    assert "403" in message
+    assert client.api_key_env in message, "must name the variable to check"
+    assert client.base_url in message, "must name the endpoint that rejected it"
+    assert client.api_key not in message, "must never echo the key itself"
+
+
+def test_unknown_model_points_at_the_model(client, monkeypatch) -> None:
+    monkeypatch.setattr(client, "_request", lambda m: (_ for _ in ()).throw(_http_error(404)))
+    monkeypatch.setattr("ragsec.core.llm.time.sleep", lambda s: None)
+    with pytest.raises(RuntimeError, match="test-model"):
+        client.generate("q")
 
 
 def test_retries_are_bounded(client, monkeypatch) -> None:
@@ -160,7 +180,7 @@ def test_retries_are_bounded(client, monkeypatch) -> None:
 
     monkeypatch.setattr(client, "_request", always_limited)
     monkeypatch.setattr("ragsec.core.llm.time.sleep", lambda s: None)
-    with pytest.raises(urllib.error.HTTPError):
+    with pytest.raises(RuntimeError, match="HTTP 429"):
         client.generate("q")
     assert attempts["n"] == client.max_retries + 1
 
