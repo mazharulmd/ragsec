@@ -40,10 +40,6 @@ from ragsec.eval.runner import CLEAN_RUN, ExperimentConfig, ExperimentRunner
 # Shared experiment ingredients
 # ---------------------------------------------------------------------------
 
-#: Key held by the ingestion pipeline of the simulated deployment. The adversary does not have
-#: it; every other property of a trusted document (source name, trust score) they can forge.
-SIGNING_KEY = "ragsec-corpus-signing-key-v1"
-
 DATASETS: dict[str, dict[str, Any]] = {
     "squad": {"name": "hf", "path": "rajpurkar/squad", "limit": 300},
     "hotpotqa": {"name": "hotpotqa", "limit": 200},
@@ -126,7 +122,7 @@ def defense_stack(name: str, dataset: str) -> list[dict[str, Any]]:
     l1 = {"name": "source_verification", "params": l1_params}
     l1_signed = {
         "name": "source_verification",
-        "params": {**l1_params, "hmac_key": SIGNING_KEY, "require_signature": True},
+        "params": {**l1_params, "require_signature": True},
     }
     l2 = {"name": "retrieval_filter", "params": {"mode": "drop"}}
     l3 = {"name": "robust_aggregation", "params": {}}
@@ -185,7 +181,7 @@ def base_config(
         seed=seed,
         output_dir=None,
         include_clean_run=include_clean_run,
-        sign_corpus=SIGNING_KEY if config in SIGNED_CONFIGS else None,
+        sign_corpus=config in SIGNED_CONFIGS,
     )
 
 
@@ -477,7 +473,6 @@ def study_provenance(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                 if options.get("allowlist"):
                     params["allowed_sources"] = [source]
                 if options.get("signed"):
-                    params["hmac_key"] = SIGNING_KEY
                     params["require_signature"] = True
                 config = base_config(
                     dataset,
@@ -490,7 +485,7 @@ def study_provenance(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                     ],
                 )
                 config.defenses = [{"name": "source_verification", "params": params}]
-                config.sign_corpus = SIGNING_KEY if options.get("signed") else None
+                config.sign_corpus = bool(options.get("signed"))
                 yield Cell(
                     study="provenance",
                     key={"dataset": dataset, "variant": variant, "seed": seed},

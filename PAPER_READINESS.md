@@ -9,7 +9,9 @@ the offline result set to 2,322 rows, regenerated the tables and figures, and re
 offline suite successfully. I also corrected the manuscript's dataset-size statement and made
 the confidence-interval and signing-key assumptions explicit. The Elsevier manuscript now
 builds in a temporary TeX environment; a real-model run remains blocked because no provider key
-or local model endpoint is configured.
+or local model endpoint is configured. The hard-coded public HMAC key has since been removed;
+the signed-ingestion harness now creates a fresh key in memory for each runner and does not write
+it to configuration or result records.
 
 ## What is already in place
 
@@ -21,8 +23,8 @@ or local model endpoint is configured.
 - The manuscript has a limitations section that identifies the mock generator, small corpora,
   one adaptive attacker, implementation coupling and excluded model/network latency.
 - The main result is appropriately qualified in places: adaptive poisoning defeats the tested
-  content filters, while the signature result depends on the modeled source signing key remaining
-  unavailable to the attacker.
+  content filters, while the signature result depends on a protected signer that the upload
+  adversary cannot invoke or compromise.
 
 ## Highest-priority gaps before paper submission
 
@@ -42,11 +44,11 @@ or local model endpoint is configured.
    and the paper itself notes that this does not establish behavior at enterprise index scale.
    Either add a larger-corpus/scale sensitivity experiment or make the boundary prominent in the
    abstract and conclusion.
-4. **The signature result is a trust-boundary result.** The experiment signs legitimate
-   documents with a simulated shared HMAC key and assumes the adversary cannot obtain it. Clarify
-   that signatures authenticate an ingestion path only when key custody and signer
-   authorization are sound; they do not prevent poisoning by a compromised or malicious
-   authorized publisher. Avoid framing HMAC itself as a complete deployment solution.
+4. **The signature result is a trust-boundary result.** The experiment now generates a fresh
+   HMAC key in memory and assumes the adversary cannot invoke or compromise the trusted signer.
+   It still does not prevent poisoning by a malicious authorized publisher, and the current
+   signature covers document text but not source identity or freshness. A deployment needs
+   explicit signer authorization, a canonical signed envelope, and key rotation/revocation.
 5. **Independent replication is still needed.** Attack and defense implementations share one
    codebase, and the adaptive attack was designed against the evaluated defenses. The paper
    acknowledges this coupling; a second implementation or an independently designed adaptive

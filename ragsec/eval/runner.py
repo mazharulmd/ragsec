@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import json
 import random
+import secrets
 from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
@@ -58,11 +59,19 @@ class ExperimentConfig:
     include_clean_run: bool = True
     benchmark_queries: int = 10
     canary_queries: int = 5
-    #: HMAC key used to sign the *legitimate* corpus before ingestion. This models an
-    #: enterprise ingestion pipeline in which curated content is signed at the source, and is
-    #: what makes ``require_signature`` on Layer 1 meaningful against a provenance-spoofing
-    #: adversary: claiming a trusted ``source_id`` is cheap, forging the HMAC is not.
-    sign_corpus: str | None = None
+    #: Whether the harness should model a trusted signer for legitimate corpus documents.
+    #: The signing key is generated at runtime and never stored in the config or result file.
+    sign_corpus: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.sign_corpus, bool):
+            raise ValueError(
+                "sign_corpus must be a boolean; keep signing keys out of configs"
+            )
+        for defense in self.defenses:
+            params = defense.get("params") or {}
+            if "hmac_key" in params:
+                raise ValueError("Do not store hmac_key in a config; pass it at runtime")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ExperimentConfig:
@@ -98,7 +107,9 @@ def build_llm(spec: dict[str, Any]) -> BaseLLM:
     raise ValueError(f"Unknown llm {name!r}; expected 'mock' or 'openai'")
 
 
-def build_defense(spec: dict[str, Any]) -> DefenseLayer:
+def build_defense(
+    spec: dict[str, Any], *, signing_key: bytes | None = None
+) -> DefenseLayer:
     name = spec["name"]
     try:
         cls = DEFENSE_REGISTRY[name]
@@ -108,20 +119,50 @@ def build_defense(spec: dict[str, Any]) -> DefenseLayer:
         ) from exc
     params = dict(spec.get("params") or {})
     if name == SourceVerificationLayer.name:
-        if isinstance(params.get("hmac_key"), str):
-            params["hmac_key"] = params["hmac_key"].encode("utf-8")
+        if "hmac_key" in params:
+            raise ValueError("Do not store hmac_key in a config; pass it at runtime")
+        if params.get("require_signature"):
+            if signing_key is None:
+                raise ValueError(
+                    "signing_key must be provided at runtime when signatures are required"
+                )
+            params["hmac_key"] = signing_key
         if params.get("allowed_sources") is not None:
             params["allowed_sources"] = set(params["allowed_sources"])
     return cls(**params)
 
 
-def build_pipeline(config: ExperimentConfig) -> RAGPipeline:
+def build_pipeline(
+    config: ExperimentConfig, *, signing_key: bytes | None = None
+) -> RAGPipeline:
+    defenses = [
+        build_defense(spec, signing_key=signing_key) for spec in config.defenses
+    ]
     return RAGPipeline.from_defaults(
         embedder=build_embedder(config.embedder),
         llm=build_llm(config.llm),
-        defenses=[build_defense(spec) for spec in config.defenses],
+        defenses=defenses,
         **config.pipeline,
     )
+
+
+def new_signing_key() -> bytes:
+    """Return a fresh 256-bit runtime key for the experiment's simulated trusted signer."""
+    return secrets.token_bytes(32)
+
+
+def sign_documents(documents: list[Document], key: bytes) -> list[Document]:
+    """Sign clean documents as the trusted corpus publisher for one experiment run."""
+    return [
+        replace(
+            doc,
+            provenance=replace(
+                doc.provenance,
+                signature=sign_document(doc.text, key),
+            ),
+        )
+        for doc in documents
+    ]
 
 
 def decoy_answers(qa: list[QAExample], rng: random.Random) -> dict[str, str]:
@@ -202,6 +243,7 @@ class ExperimentRunner:
     def __init__(self, config: ExperimentConfig, dataset: Dataset | None = None) -> None:
         self.config = config
         self.dataset = dataset or load_dataset(config.dataset)
+        self._signing_key = new_signing_key() if config.sign_corpus else None
 
     def run(self) -> list[ExperimentResult]:
         results: list[ExperimentResult] = []
@@ -225,21 +267,16 @@ class ExperimentRunner:
         return counts.most_common(1)[0][0] if counts else "unknown"
 
     def _corpus(self) -> list[Document]:
-        """The legitimate corpus, signed when the experiment configures a signing key."""
-        if not self.config.sign_corpus:
+        """The legitimate corpus, signed by the separate harness signer when enabled."""
+        if self._signing_key is None:
             return self.dataset.documents
-        key = self.config.sign_corpus.encode("utf-8")
-        signed: list[Document] = []
-        for doc in self.dataset.documents:
-            provenance = replace(doc.provenance, signature=sign_document(doc.text, key))
-            signed.append(replace(doc, provenance=provenance))
-        return signed
+        return sign_documents(self.dataset.documents, self._signing_key)
 
     def run_attack(
         self, spec: dict[str, Any] | None, baseline: dict[str, bool] | None = None
     ) -> ExperimentResult:
         rng = random.Random(self.config.seed)
-        pipeline = build_pipeline(self.config)
+        pipeline = build_pipeline(self.config, signing_key=self._signing_key)
         ingest_clean = pipeline.ingest(self._corpus())
         qa = self.dataset.qa
 

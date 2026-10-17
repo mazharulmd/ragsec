@@ -2,8 +2,9 @@
 #
 # The difference from full_defense.yaml is one line of policy: Layer 1 requires a valid
 # HMAC-SHA256 signature rather than trusting the source identifier and trust score an uploader
-# asserts. `sign_corpus` models the enterprise side of that arrangement -- the legitimate
-# corpus is signed by the ingestion pipeline at the source. This is the only configuration in
+# asserts. `sign_corpus` asks the experiment harness to generate a fresh runtime-only key and
+# sign the legitimate corpus as a separate trusted publisher. The key is never stored in this
+# file or emitted in results. This is the only configuration in
 # the study that withstands the defense-aware adaptive adversary, which spoofs provenance.
 name: full_defense_signed
 dataset: {name: toy}
@@ -12,7 +13,7 @@ llm: {name: mock, follow_injections: true}
 pipeline: {top_k: 3, candidate_multiplier: 10}
 seed: 0
 output_dir: results
-sign_corpus: ragsec-corpus-signing-key-v1
+sign_corpus: true
 attacks:
   - {name: poisoned_rag, n_per_target: 1}
   - {name: trigger_backdoor, n_per_target: 1}
@@ -25,7 +26,6 @@ defenses:
       allowed_sources: [curated-encyclopedia]
       source_trust: {curated-encyclopedia: 0.8}
       min_trust: 0.6
-      hmac_key: ragsec-corpus-signing-key-v1
       require_signature: true
       max_documents_per_source: 100000
   - name: retrieval_filter

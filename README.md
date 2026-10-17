@@ -219,6 +219,8 @@ cd paper-submission && pdflatex MainPaper && bibtex MainPaper && pdflatex MainPa
 
 The manuscript uses Elsevier's requested `\documentclass[5p,times]{elsarticle}` layout and
 numeric Elsevier bibliography style. Wide tables and figures span both columns.
+The signed-ingestion study creates a fresh 256-bit key at runtime. Never place signing keys in
+YAML configs or committed source.
 
 ### Submission history
 

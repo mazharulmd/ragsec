@@ -8,6 +8,7 @@ import random
 import sys
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 from ragsec.attacks import ATTACK_REGISTRY, AttackTarget, get_attack
 from ragsec.defenses import MonitoringLayer
@@ -19,11 +20,24 @@ from ragsec.eval import (
     format_summary_table,
     load_dataset,
 )
-from ragsec.eval.runner import decoy_answers
+from ragsec.eval.runner import decoy_answers, new_signing_key, sign_documents
 
 
 def _load_config(path: str | None) -> ExperimentConfig:
     return ExperimentConfig.from_yaml(path) if path else ExperimentConfig()
+
+
+def _ingest_clean_corpus(config: ExperimentConfig, dataset: Any):
+    """Build the demo pipeline and ingest clean data through its optional trusted signer."""
+    signing_key = new_signing_key() if config.sign_corpus else None
+    pipeline = build_pipeline(config, signing_key=signing_key)
+    documents = (
+        sign_documents(dataset.documents, signing_key)
+        if signing_key is not None
+        else dataset.documents
+    )
+    pipeline.ingest(documents)
+    return pipeline
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -61,8 +75,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 def cmd_query(args: argparse.Namespace) -> int:
     config = _load_config(args.config)
     dataset = load_dataset(config.dataset)
-    pipeline = build_pipeline(config)
-    pipeline.ingest(dataset.documents)
+    pipeline = _ingest_clean_corpus(config, dataset)
     query = args.question
     if args.attack:
         attack = get_attack(args.attack)
@@ -92,12 +105,11 @@ def cmd_query(args: argparse.Namespace) -> int:
 def cmd_monitor(args: argparse.Namespace) -> int:
     config = _load_config(args.config)
     dataset = load_dataset(config.dataset)
-    pipeline = build_pipeline(config)
+    pipeline = _ingest_clean_corpus(config, dataset)
     monitor = next((d for d in pipeline.defenses if isinstance(d, MonitoringLayer)), None)
     if monitor is None:
         monitor = MonitoringLayer(window_size=len(dataset.qa))
         pipeline.add_defense(monitor)
-    pipeline.ingest(dataset.documents)
     questions = [ex.question for ex in dataset.qa]
     monitor.register_benchmarks(questions)
     for ex in dataset.qa[:5]:

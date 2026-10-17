@@ -727,14 +727,14 @@ and $f_4$ observes the resulting stream without modifying it.
 
 \subsection{Adversary Model}
 
-We assume an adversary who can \textbf{write to the knowledge base}, whether by uploading
-through a public or semi-public connector, by compromising a single ingestion account, or as a
-malicious insider, and who knows the target question. Following standard practice for
-security evaluation, we grant the adversary knowledge of the defense: its architecture, the
-filters it deploys, and its thresholds. We do \emph{not} grant the adversary the ability to
-modify the generator's weights, to read or forge the ingestion signing key, to modify the
-retriever, or to observe other users' queries. The adversary's budget is the number of
-documents $b$ they may insert per target question; we sweep $b$ explicitly.
+We assume an adversary who can \textbf{write to the knowledge base} through an untrusted
+connector or a compromised upload account that has no signing authority, and who knows the
+target question. The trusted publisher that signs legitimate documents is a separate principal
+from the upload path. We grant the adversary knowledge of the defense: its architecture, filters,
+and thresholds. We do \emph{not} grant the adversary the ability to compromise the trusted
+publisher, read or forge its signing key, modify the generator's weights or retriever, or observe
+other users' queries. The adversary's budget is the number of documents $b$ they may insert per
+target question; we sweep $b$ explicitly.
 
 Two adversarial goals are distinguished. Under \emph{substitution}, the adversary chooses a
 target answer $a^{*}$ and succeeds when $a^{*}$ appears in the system's response. Under
@@ -797,8 +797,10 @@ trust threshold $\theta_{\mathrm{trust}}$ on the trust score associated with the
 source; HMAC-SHA256 signature verification~\citep{krawczyk1997hmac} recomputed over the
 document text rather than trusted from caller-supplied metadata; content-hash deduplication;
 and a per-source document quota that bounds bulk insertion. Requiring signatures without a
-configured verification key is rejected at construction time rather than silently degrading to
-a no-op.
+runtime verification key is rejected at construction time rather than silently degrading to a
+no-op. In this study, the harness generates a fresh 256-bit key for each runner, signs only the
+legitimate corpus, and keeps the key in memory. The attack interface receives no signing
+capability, and the key is absent from source, configuration files, and result records.
 
 Algorithm~\ref{alg:l1} gives the order of checks. The distinction that turns out to matter
 experimentally is between the \emph{claimed} and the \emph{provable} parts of provenance. A source identifier and a trust score are attributes an
@@ -1145,8 +1147,8 @@ percentile.
 \subsection{Configurations and Studies}
 
 Seven configurations are compared: the undefended pipeline; each layer alone (L1--L4); the full
-stack; and the full stack with signature-bound ingestion, in which the legitimate corpus is
-signed at the source and Layer~1 requires a valid signature. Unless stated otherwise $k = 3$,
+stack; and the full stack with signature-bound ingestion, in which a simulated trusted publisher
+signs the legitimate corpus and Layer~1 requires a valid signature. Unless stated otherwise $k = 3$,
 $m = 10$, $\theta_{\mathrm{trust}} = 0.6$, and the adversary's budget is one document per
 target for A1--A3, five for A4 and three for A5. Every cell is repeated over three seeds, which
 vary the decoy answers assigned to targets.
@@ -1831,9 +1833,12 @@ mitigated this by exposing evasion techniques as independent switches and report
 attribution rather than aggregate scores, so a reader can see which defensive assumption each
 result depends on, but independent reimplementation would be stronger evidence.
 
-The signature result assumes the signing key is protected and only authorized sources can
-request signatures. The experiment models that boundary with a shared HMAC key unavailable to
-the attacker; it does not test key compromise or poisoning by a malicious authorized publisher.
+The signature result assumes the signing key and signing authority are protected and only
+authorized publishers can request signatures. The harness uses a fresh in-memory HMAC key and
+does not test compromise of the signer or poisoning by a malicious authorized publisher. The
+signature currently covers document text only, not source identity, document identifiers, or
+freshness; a deployment would need to authenticate those fields in a canonical signed envelope
+and define signer authorization, key rotation, and revocation.
 
 Finally, reported latencies exclude external model and network cost, and the abstention
 behavior we report is a property of our aggregation thresholds rather than a calibrated
