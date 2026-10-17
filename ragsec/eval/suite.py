@@ -78,6 +78,13 @@ CONFIRMATION_QUERIES = 100
 #: Where completions are cached, so an interrupted run resumes without paying twice.
 CONFIRMATION_CACHE = "results/paper/llm-cache.sqlite"
 
+#: Endpoint for the confirmation study. Any OpenAI-compatible ``/chat/completions`` service
+#: works, so the study can run against a hosted provider with a free tier, or against a local
+#: server such as Ollama, without touching the code. Only the base URL, the model names and
+#: the environment variable holding the key change.
+CONFIRMATION_BASE_URL = "https://api.openai.com/v1"
+CONFIRMATION_KEY_ENV = "OPENAI_API_KEY"
+
 ATTACK_LABELS = {
     "poisoned_rag": "PoisonedRAG",
     "trigger_backdoor": "Trigger backdoor",
@@ -524,6 +531,8 @@ def study_confirmation(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                     cfg.llm = {
                         "name": "openai",
                         "model": model,
+                        "base_url": CONFIRMATION_BASE_URL,
+                        "api_key_env": CONFIRMATION_KEY_ENV,
                         "temperature": 0.0,
                         "max_tokens": 128,
                         "cache_path": CONFIRMATION_CACHE,
@@ -588,15 +597,21 @@ def run_suite(
     output_dir: str | Path = "results/paper",
     resume: bool = True,
     models: list[str] | None = None,
+    base_url: str | None = None,
+    api_key_env: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Run the requested studies and return ``{study: rows}``.
 
     Studies in :data:`PAID_STUDIES` call a metered endpoint and are therefore opt-in: a bare
     call runs everything else, and the paid ones only when named explicitly.
     """
+    global CONFIRMATION_MODELS, CONFIRMATION_BASE_URL, CONFIRMATION_KEY_ENV
     if models:
-        global CONFIRMATION_MODELS
         CONFIRMATION_MODELS = list(models)
+    if base_url:
+        CONFIRMATION_BASE_URL = base_url
+    if api_key_env:
+        CONFIRMATION_KEY_ENV = api_key_env
     studies = studies or [s for s in STUDIES if s not in PAID_STUDIES]
     datasets = datasets or ["squad", "hotpotqa", "toy"]
     seeds = seeds or [0, 1, 2]

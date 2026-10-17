@@ -142,6 +142,8 @@ def cmd_suite(args: argparse.Namespace) -> int:
         output_dir=args.output_dir,
         resume=not args.no_resume,
         models=args.models or None,
+        base_url=args.base_url or None,
+        api_key_env=args.api_key_env or None,
     )
     for study in args.studies or list(STUDIES):
         print(f"{study}: {len(rows.get(study, []))} rows -> {args.output_dir}/{study}.jsonl")
@@ -233,7 +235,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_suite.add_argument("--no-resume", action="store_true", help="recompute finished cells")
     p_suite.add_argument(
         "--models", nargs="*", default=[],
-        help="models for the paid confirmation study (default: gpt-4o-mini gpt-4o)",
+        help="models for the confirmation study (default: gpt-4o-mini gpt-4o)",
+    )
+    p_suite.add_argument(
+        "--base-url", default="",
+        help=(
+            "OpenAI-compatible endpoint for the confirmation study, e.g. "
+            "https://api.groq.com/openai/v1 or http://localhost:11434/v1 for Ollama"
+        ),
+    )
+    p_suite.add_argument(
+        "--api-key-env", default="",
+        help="environment variable holding the API key (default: OPENAI_API_KEY)",
     )
     p_suite.set_defaults(func=cmd_suite)
 

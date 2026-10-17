@@ -149,6 +149,22 @@ ragsec suite --studies confirmation --datasets squad --seeds 0
 ragsec suite --studies confirmation --datasets squad --seeds 0 --models gpt-4o-mini
 ```
 
+Any OpenAI-compatible `/chat/completions` endpoint works, so the study can run against a
+provider with a free tier or against a local server, with no code change:
+
+```bash
+# Groq (free tier)
+export GROQ_API_KEY=...
+ragsec suite --studies confirmation --datasets squad --seeds 0   --base-url https://api.groq.com/openai/v1 --api-key-env GROQ_API_KEY   --models llama-3.3-70b-versatile
+
+# Ollama, local and free; any key value satisfies the client
+export OLLAMA_API_KEY=ollama
+ragsec suite --studies confirmation --datasets squad --seeds 0   --base-url http://localhost:11434/v1 --api-key-env OLLAMA_API_KEY   --models llama3.1:8b qwen2.5:7b
+```
+
+Note that a ChatGPT Plus subscription does not include API access; an API key and its own
+billing come from the provider's developer platform.
+
 Completions are cached in `results/paper/llm-cache.sqlite`, keyed by model, temperature,
 system prompt and prompt. An interrupted run resumes without paying twice, and re-running to
 fix a reporting bug costs nothing. Rate limits and transient server errors are retried with
