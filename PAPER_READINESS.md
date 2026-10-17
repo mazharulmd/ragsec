@@ -37,9 +37,10 @@ it to configuration or result records.
    date, sample count and failures with any run.
 2. **Query-level uncertainty remains unavailable for the archived results.** The manuscript
    retains pooled rates as descriptive estimates and adds the observed min-to-max range across
-   seeds. New pinned main-study runs now persist per-question outcomes, enabling a query-clustered
-   bootstrap; the archived rows still lack those outcomes, and no cluster-bootstrap intervals
-   have been calculated yet.
+   seeds. New pinned main-study runs persist per-question outcomes, and report generation now
+   emits `query_uncertainty.json` with percentile bootstrap intervals over question clusters.
+   The archived rows still lack those outcomes; rerun the pinned main study before using these
+   intervals to revise the paper.
 3. **The measured corpus scale is small.** The abstract and conclusion now state that the
    evaluated corpora contain 30 to 1,999 documents and do not establish enterprise-scale
    behavior. A larger-corpus or scale-sensitivity experiment is still needed for that claim.

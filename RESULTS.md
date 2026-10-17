@@ -5,7 +5,9 @@ Narrative summary of the archived evaluation. The tables in `paper/tables/` and 
 revision tracking. New pinned reruns go to `results/paper-pinned/` and should be reported
 separately until the paper's results have been regenerated from that snapshot. New main-study
 runs also save per-question outcomes under `results/paper-pinned/main_query_records/` for
-query-clustered analysis.
+query-clustered analysis. Running the report on that directory emits bootstrap intervals in
+`paper/query_uncertainty.json`; these are conditional on the included seeds and do not apply to
+the archived aggregates.
 
 Regenerate the archived tables from the committed records with:
 

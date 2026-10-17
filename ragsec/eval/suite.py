@@ -338,7 +338,7 @@ def run_study(
         for index, cell in enumerate(cells, 1):
             identifier = cell_id(cell)
             query_path = (
-                query_records_path(out_path, identifier) if out_path.stem == "main" else None
+                query_records_path(out_path, identifier) if cell.study == "main" else None
             )
             if identifier in done and (query_path is None or query_path.exists()):
                 continue

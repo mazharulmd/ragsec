@@ -7,6 +7,7 @@ in the paper is transcribed by hand. Tables are emitted as LaTeX fragments that 
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -19,6 +20,7 @@ from typing import Any
 from ragsec.eval.suite import ATTACK_LABELS, CONFIG_LABELS, EVASION_LABELS
 
 Row = dict[str, Any]
+QUERY_BOOTSTRAP_SEED = 20_261_017
 
 # ---------------------------------------------------------------------------
 # House style
@@ -98,6 +100,107 @@ def load_rows(results_dir: Path, study: str) -> list[Row]:
         return []
     with path.open("r", encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
+
+
+def load_query_records(results_dir: Path) -> list[Row]:
+    """Load per-question outcomes emitted by the pinned main-study runner."""
+    records_dir = results_dir / "main_query_records"
+    if not records_dir.exists():
+        return []
+    records: list[Row] = []
+    for path in sorted(records_dir.glob("*.jsonl")):
+        with path.open("r", encoding="utf-8") as handle:
+            records.extend(
+                row for line in handle if line.strip()
+                if (row := json.loads(line)).get("record_type") == "query_outcome"
+            )
+    return records
+
+
+def query_cluster_summary(
+    records: Sequence[Row],
+    keys: Sequence[str] = ("dataset", "config", "attack"),
+    *,
+    n_bootstrap: int = 2_000,
+    confidence: float = 0.95,
+    seed: int = QUERY_BOOTSTRAP_SEED,
+) -> list[Row]:
+    """Estimate ASR with percentile bootstrap intervals resampling question clusters.
+
+    Each sampled cluster contains that question's outcomes across all experiment seeds. This
+    preserves the repeated-query dependence while retaining the pooled query-seed estimand.
+    Conditional ASR uses only outcomes whose same-configuration baseline was correct.
+    """
+    if n_bootstrap < 1:
+        raise ValueError("n_bootstrap must be positive")
+    if not 0 < confidence < 1:
+        raise ValueError("confidence must be between 0 and 1")
+
+    # Per question: raw successes/trials, then baseline-correct successes/trials.
+    grouped: dict[tuple, dict[str, list[int]]] = defaultdict(dict)
+    seeds_by_group: dict[tuple, set[Any]] = defaultdict(set)
+    for row in records:
+        if not row.get("attacked") or row.get("attack_success") is None:
+            continue
+        key = tuple(row[field] for field in keys)
+        question = row.get("question")
+        if not question:
+            continue
+        counts = grouped[key].setdefault(str(question), [0, 0, 0, 0])
+        success = int(bool(row["attack_success"]))
+        counts[0] += success
+        counts[1] += 1
+        if row.get("baseline_correct"):
+            counts[2] += success
+            counts[3] += 1
+        if "seed" in row:
+            seeds_by_group[key].add(row["seed"])
+
+    import numpy as np
+
+    alpha = 1.0 - confidence
+    low_q, high_q = alpha / 2.0, 1.0 - alpha / 2.0
+    output: list[Row] = []
+    for key in sorted(grouped, key=lambda value: tuple(map(str, value))):
+        clusters = [grouped[key][question] for question in sorted(grouped[key])]
+        counts = np.asarray(clusters, dtype=np.int64)
+        draw_seed = int.from_bytes(
+            hashlib.sha256(json.dumps(key, separators=(",", ":")).encode()).digest()[:8],
+            "big",
+        )
+        rng = np.random.default_rng(seed ^ draw_seed)
+        draws = rng.integers(0, len(clusters), size=(n_bootstrap, len(clusters)))
+
+        def interval(successes: Any, trials: Any) -> tuple[float, float, float] | None:
+            total = int(trials.sum())
+            if total == 0:
+                return None
+            estimate = float(successes.sum() / total)
+            sampled_successes = successes[draws].sum(axis=1)
+            sampled_trials = trials[draws].sum(axis=1)
+            valid = sampled_trials > 0
+            if not valid.any():
+                return estimate, estimate, estimate
+            rates = sampled_successes[valid] / sampled_trials[valid]
+            low, high = np.quantile(rates, [low_q, high_q])
+            return estimate, float(low), float(high)
+
+        raw = interval(counts[:, 0], counts[:, 1])
+        conditional = interval(counts[:, 2], counts[:, 3])
+        output.append({
+            **dict(zip(keys, key, strict=True)),
+            "n_query_clusters": len(clusters),
+            "n_seeds": len(seeds_by_group[key]),
+            "n_query_seed_trials": int(counts[:, 1].sum()),
+            "asr": raw[0] if raw else None,
+            "asr_ci_low": raw[1] if raw else None,
+            "asr_ci_high": raw[2] if raw else None,
+            "n_baseline_correct": int(counts[:, 3].sum()),
+            "conditional_asr": conditional[0] if conditional else None,
+            "conditional_asr_ci_low": conditional[1] if conditional else None,
+            "conditional_asr_ci_high": conditional[2] if conditional else None,
+        })
+    return output
 
 
 def _finite(values: Iterable[Any]) -> list[float]:
@@ -1494,6 +1597,26 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
     written: list[Path] = [
         fig_architecture(figures), tab_datasets(tables), tab_examples(tables)
     ]
+    query_records = load_query_records(results_dir)
+    if query_records:
+        uncertainty_path = output_dir / "query_uncertainty.json"
+        uncertainty_path.parent.mkdir(parents=True, exist_ok=True)
+        uncertainty = {
+            "method": (
+                "Percentile bootstrap over distinct question clusters; each cluster retains "
+                "its outcomes across all included experiment seeds. Intervals describe query "
+                "sampling uncertainty conditional on those seeds."
+            ),
+            "cluster_unit": "question text",
+            "confidence_level": 0.95,
+            "bootstrap_replicates": 2_000,
+            "bootstrap_seed": QUERY_BOOTSTRAP_SEED,
+            "results": query_cluster_summary(query_records),
+        }
+        with uncertainty_path.open("w", encoding="utf-8") as handle:
+            json.dump(uncertainty, handle, indent=2)
+            handle.write("\n")
+        written.append(uncertainty_path)
 
     def attempt(label: str, fn: Callable[[], Path]) -> None:
         try:

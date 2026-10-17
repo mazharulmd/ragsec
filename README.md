@@ -110,8 +110,10 @@ The committed records in `results/paper/` predate dataset revision tracking. New
 Hub revisions and a separate output directory, so they cannot be mixed with those archived
 records. The SQuAD and HotpotQA commit IDs are recorded in `ragsec/eval/suite.py` and copied
 into every new result row. Main-study per-question outcomes are written under
-`results/paper-pinned/main_query_records/`. Regenerate figures from the new run with
-`ragsec figures --results-dir results/paper-pinned`.
+`results/paper-pinned/main_query_records/`. Regenerate figures and query-cluster bootstrap
+intervals from the new run with `ragsec figures --results-dir results/paper-pinned`; the
+intervals are written to `paper/query_uncertainty.json` and are conditional on the included
+experiment seeds.
 
 `ragsec suite` runs eight offline studies by default. A ninth, real-model confirmation study is
 opt-in because it calls a model endpoint; each study writes one JSONL file and can be run alone:
