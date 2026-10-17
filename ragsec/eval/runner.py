@@ -158,7 +158,7 @@ def sign_documents(documents: list[Document], key: bytes) -> list[Document]:
             doc,
             provenance=replace(
                 doc.provenance,
-                signature=sign_document(doc.text, key),
+                signature=sign_document(doc, key),
             ),
         )
         for doc in documents

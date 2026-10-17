@@ -129,8 +129,11 @@ def test_source_verification_allowlist_and_quota() -> None:
 def test_source_verification_signatures() -> None:
     key = b"secret-key"
     layer = SourceVerificationLayer(hmac_key=key, require_signature=True)
-    good = Document(text="signed", provenance=Provenance(signature=sign_document("signed", key)))
-    bad = Document(text="tampered", provenance=Provenance(signature=sign_document("other", key)))
+    good = Document(text="signed")
+    good.provenance.signature = sign_document(good, key)
+    bad = Document(text="other")
+    bad.provenance.signature = sign_document(bad, key)
+    bad.text = "tampered"
     missing = Document(text="unsigned")
     assert layer.on_ingest([good, bad, missing]) == [good]
     assert {r.reason for r in layer.rejections} == {"invalid signature", "missing signature"}

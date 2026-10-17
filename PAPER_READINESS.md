@@ -46,9 +46,10 @@ it to configuration or result records.
    abstract and conclusion.
 4. **The signature result is a trust-boundary result.** The experiment now generates a fresh
    HMAC key in memory and assumes the adversary cannot invoke or compromise the trusted signer.
-   It still does not prevent poisoning by a malicious authorized publisher, and the current
-   signature covers document text but not source identity or freshness. A deployment needs
-   explicit signer authorization, a canonical signed envelope, and key rotation/revocation.
+   It still does not prevent poisoning by a malicious authorized publisher. Signatures now bind
+   the document ID, source ID, and text in a canonical envelope, but do not prevent replay of an
+   old signed document. A deployment needs explicit signer authorization, freshness/replay
+   controls, and key rotation/revocation.
 5. **Independent replication is still needed.** Attack and defense implementations share one
    codebase, and the adaptive attack was designed against the evaluated defenses. The paper
    acknowledges this coupling; a second implementation or an independently designed adaptive

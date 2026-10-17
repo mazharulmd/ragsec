@@ -163,10 +163,9 @@ def test_allowlist_is_defeated_by_spoofing_but_signatures_are_not() -> None:
 
     legitimate = Document(
         text=CLEAN_CORPUS[0],
-        provenance=Provenance(
-            source_id="curated", trust_score=0.8, signature=sign_document(CLEAN_CORPUS[0], key)
-        ),
+        provenance=Provenance(source_id="curated", trust_score=0.8),
     )
+    legitimate.provenance.signature = sign_document(legitimate, key)
     assert len(signed.on_ingest([legitimate])) == 1
 
 

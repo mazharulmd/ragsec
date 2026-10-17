@@ -27,8 +27,10 @@ the accompanying paper. They operate on a local corpus you supply and target a l
 nothing here attacks a third-party system.
 
 Use them on systems you own or are authorised to test. If you deploy RAG in production, the
-practical conclusion of this work is short: sign documents at the source and verify the
-signature at ingestion. Every content-based control measured here was evaded by rewriting.
+practical conclusion of this work is short: sign a canonical envelope containing each
+document's identity, source identity, and text at the source, then verify it at ingestion.
+Replay prevention and signer authorization remain deployment requirements. Every content-based
+control measured here was evaded by rewriting.
 
 ## Architecture
 

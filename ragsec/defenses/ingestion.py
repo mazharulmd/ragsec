@@ -1,14 +1,15 @@
 """Layer 1: ingestion-time source verification.
 
 Controls *who* may write to the knowledge base and *what* they may write: source allowlists,
-per-source trust scores, HMAC signatures over content, duplicate suppression and per-source
-quotas that blunt bulk poisoning (e.g. context flooding).
+per-source trust scores, HMAC signatures over document identity and content, duplicate
+suppression and per-source quotas that blunt bulk poisoning (e.g. context flooding).
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -17,9 +18,25 @@ from ragsec.core.defense import DefenseLayer
 from ragsec.core.models import Document, content_hash
 
 
-def sign_document(text: str, key: bytes) -> str:
-    """HMAC-SHA256 signature (hex) over the document text."""
-    return hmac.new(key, text.encode("utf-8"), hashlib.sha256).hexdigest()
+def document_signing_payload(doc: Document) -> bytes:
+    """Return a canonical, versioned representation of the signed document fields."""
+    envelope = {
+        "version": "ragsec-document-v1",
+        "doc_id": doc.doc_id,
+        "source_id": doc.provenance.source_id,
+        "text": doc.text,
+    }
+    return json.dumps(
+        envelope,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def sign_document(doc: Document, key: bytes) -> str:
+    """Return an HMAC-SHA256 hex digest over document identity, source, and text."""
+    return hmac.new(key, document_signing_payload(doc), hashlib.sha256).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -81,7 +98,7 @@ class SourceVerificationLayer(DefenseLayer):
             if self.require_signature:
                 return "missing signature"
         elif self.hmac_key is not None and not hmac.compare_digest(
-            signature, sign_document(doc.text, self.hmac_key)
+            signature, sign_document(doc, self.hmac_key)
         ):
             return "invalid signature"
         if self.dedupe and content_hash(doc.text) in self._seen_hashes:

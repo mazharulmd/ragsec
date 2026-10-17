@@ -23,7 +23,7 @@ class Provenance:
         author: Optional author or uploader identity.
         ingest_time: Unix timestamp of ingestion.
         trust_score: Prior trust in ``[0, 1]`` assigned to the source.
-        signature: Optional hex HMAC/signature over the content, verified at ingest.
+        signature: Optional hex HMAC over the versioned document ID, source ID, and text.
         extra: Free-form metadata.
     """
 

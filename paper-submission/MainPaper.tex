@@ -710,8 +710,9 @@ systems on their respective benchmarks.
 
 Let $\mathcal{D} = \{d_1, \dots, d_n\}$ be the document collection. Each document $d$ carries
 provenance $\pi(d) = (s, \sigma, \omega)$, where $s$ is the identifier of the source that
-submitted it, $\sigma$ an optional signature over its content, and $\omega \in [0,1]$ a trust
-score associated with $s$. Documents are split into chunks and embedded by
+submitted it, $\sigma$ an optional signature over the canonical envelope
+$\mathsf{env}(d) = (v, \mathrm{id}(d), s, \mathrm{text}(d))$, and $\omega \in [0,1]$ a trust score
+associated with $s$. Documents are split into chunks and embedded by
 $E : \Sigma^{*} \rightarrow \mathbb{R}^{h}$ with unit-norm output, so that the inner product
 $\langle E(q), E(c) \rangle$ is the cosine similarity between a query $q$ and a chunk $c$. The
 retriever returns the $mk$ highest-scoring chunks, where $k$ is the number of passages the
@@ -794,9 +795,10 @@ possibly manipulated answer.
 
 Layer~1 decides what may enter the index. It applies, in order: a source allowlist; a minimum
 trust threshold $\theta_{\mathrm{trust}}$ on the trust score associated with the claimed
-source; HMAC-SHA256 signature verification~\citep{krawczyk1997hmac} recomputed over the
-document text rather than trusted from caller-supplied metadata; content-hash deduplication;
-and a per-source document quota that bounds bulk insertion. Requiring signatures without a
+source; HMAC-SHA256 signature verification~\citep{krawczyk1997hmac} recomputed over a
+versioned canonical encoding of the document identifier, source identifier, and text rather
+than trusted from caller-supplied metadata; content-hash deduplication; and a per-source
+document quota that bounds bulk insertion. Requiring signatures without a
 runtime verification key is rejected at construction time rather than silently degrading to a
 no-op. In this study, the harness generates a fresh 256-bit key for each runner, signs only the
 legitimate corpus, and keeps the key in memory. The attack interface receives no signing
@@ -1298,7 +1300,8 @@ target, the adversary simply buys the majority. This is not a tuning failure of 
 weighting; it is what any consistency- or corroboration-based aggregator must do when the
 adversary controls more of the evidence than the corpus does.
 
-Only the ingestion signature holds. With Layer~1 requiring a valid HMAC over document content,
+Only the ingestion signature holds. With Layer~1 requiring a valid HMAC over the document
+identifier, source identifier, and text,
 the adaptive attack's attributable success falls to \casrAdaptiveSquadfullsigned{} on SQuAD and
 \casrAdaptiveHotpotqafullsigned{} on HotpotQA, and clean accuracy is unchanged at
 \cleanAccSquadfullsigned{}. The poisoned documents are rejected at ingestion and never reach
@@ -1836,9 +1839,10 @@ result depends on, but independent reimplementation would be stronger evidence.
 The signature result assumes the signing key and signing authority are protected and only
 authorized publishers can request signatures. The harness uses a fresh in-memory HMAC key and
 does not test compromise of the signer or poisoning by a malicious authorized publisher. The
-signature currently covers document text only, not source identity, document identifiers, or
-freshness; a deployment would need to authenticate those fields in a canonical signed envelope
-and define signer authorization, key rotation, and revocation.
+signature binds a versioned canonical envelope containing document text, document identifier,
+and source identifier, but does not enforce freshness or prevent replay of an old signed
+document. A deployment still needs signer authorization, replay controls, key rotation, and
+revocation.
 
 Finally, reported latencies exclude external model and network cost, and the abstention
 behavior we report is a property of our aggregation thresholds rather than a calibrated
