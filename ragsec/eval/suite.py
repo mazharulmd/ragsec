@@ -65,6 +65,19 @@ ATTACKS: list[dict[str, Any]] = [
     {"name": "adaptive_poison", "n_per_target": 3},
 ]
 
+#: Models for the real-generator confirmation study. Every other study uses the mock
+#: generator, which is what makes the 612-cell factorial affordable and deterministic; this
+#: study exists to show the headline result is not an artefact of that instrument.
+CONFIRMATION_MODELS: list[str] = ["gpt-4o-mini", "gpt-4o"]
+
+#: Queries per corpus in the confirmation study. Small on purpose: the point is to confirm
+#: the direction and rough magnitude of the main result on a real generator, not to repeat
+#: the full factorial at API prices.
+CONFIRMATION_QUERIES = 100
+
+#: Where completions are cached, so an interrupted run resumes without paying twice.
+CONFIRMATION_CACHE = "results/paper/llm-cache.sqlite"
+
 ATTACK_LABELS = {
     "poisoned_rag": "PoisonedRAG",
     "trigger_backdoor": "Trigger backdoor",
@@ -478,6 +491,55 @@ def study_provenance(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                 )
 
 
+def study_confirmation(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
+    """Repeat the headline comparison on real language models.
+
+    Every other study uses the deterministic mock generator. That is a deliberate instrument:
+    it fixes generator behaviour exactly, so a change in measured attack success is
+    attributable to the retrieval pipeline rather than to sampling. It is also the obvious
+    objection to the work, because the mock obeys injected instructions by construction and
+    believes whatever it is given. This study answers the objection on a reduced grid:
+    the configurations that matter, the attacks that separate them, one seed, and a corpus
+    small enough to run against a paid endpoint.
+
+    The adaptive attack succeeds because the generator believes a corroborated document. A
+    real model may resist that, so this is the experiment most able to overturn the paper's
+    central claim.
+    """
+    configs = ("none", "L2", "full", "full_signed")
+    attacks = [
+        {"name": "poisoned_rag", "n_per_target": 1},
+        {"name": "prompt_injection", "n_per_target": 1},
+        {"name": "adaptive_poison", "n_per_target": 3},
+    ]
+    for dataset in datasets:
+        spec = dict(DATASETS[dataset])
+        if "limit" in spec or spec.get("name") == "hf":
+            spec["limit"] = CONFIRMATION_QUERIES
+        for model in CONFIRMATION_MODELS:
+            for config in configs:
+                for seed in seeds:
+                    cfg = base_config(dataset, config, seed, attacks=attacks)
+                    cfg.dataset = spec
+                    cfg.llm = {
+                        "name": "openai",
+                        "model": model,
+                        "temperature": 0.0,
+                        "max_tokens": 128,
+                        "cache_path": CONFIRMATION_CACHE,
+                    }
+                    yield Cell(
+                        study="confirmation",
+                        key={
+                            "dataset": dataset,
+                            "model": model,
+                            "config": config,
+                            "seed": seed,
+                        },
+                        config=cfg,
+                    )
+
+
 def study_generator(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
     """Separate the risk contributed by an injection-susceptible generator from retrieval."""
     for dataset in datasets:
@@ -511,7 +573,12 @@ STUDIES = {
     "backfill_strict": study_backfill_strict,
     "provenance": study_provenance,
     "generator": study_generator,
+    "confirmation": study_confirmation,
 }
+
+#: Studies that call a paid endpoint. Excluded from a bare `ragsec suite` so that the
+#: default run stays free and offline-reproducible.
+PAID_STUDIES = {"confirmation"}
 
 
 def run_suite(
@@ -520,9 +587,17 @@ def run_suite(
     seeds: list[int] | None = None,
     output_dir: str | Path = "results/paper",
     resume: bool = True,
+    models: list[str] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Run the requested studies and return ``{study: rows}``."""
-    studies = studies or list(STUDIES)
+    """Run the requested studies and return ``{study: rows}``.
+
+    Studies in :data:`PAID_STUDIES` call a metered endpoint and are therefore opt-in: a bare
+    call runs everything else, and the paid ones only when named explicitly.
+    """
+    if models:
+        global CONFIRMATION_MODELS
+        CONFIRMATION_MODELS = list(models)
+    studies = studies or [s for s in STUDIES if s not in PAID_STUDIES]
     datasets = datasets or ["squad", "hotpotqa", "toy"]
     seeds = seeds or [0, 1, 2]
     directory = Path(output_dir)

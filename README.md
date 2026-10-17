@@ -121,6 +121,7 @@ adopted here forbids them.
 | `backfill_strict` | The same sweep at an aggressive filter threshold — the only regime where backfill can matter. |
 | `provenance` | Do allowlists and trust scores survive a provenance-spoofing adversary, and does HMAC signing recover? |
 | `generator` | How much of the measured risk comes from an injection-susceptible generator rather than from retrieval? |
+| `confirmation` | Does the headline result hold on real language models rather than the mock generator? **Calls a paid API; opt-in.** |
 
 Restrict the grid while iterating:
 
@@ -130,6 +131,33 @@ ragsec suite --studies main evasion --datasets squad --seeds 0
 
 Results are appended as keyed JSON lines, so an interrupted run resumes without recomputing
 finished cells. `--no-resume` forces recomputation.
+
+### The real-model confirmation study
+
+Every study above uses the deterministic mock generator. That is deliberate: it fixes
+generator behaviour exactly, so a change in measured attack success is attributable to the
+retrieval pipeline rather than to sampling, and it makes a 612-cell factorial affordable. It is
+also the obvious objection, since the mock obeys injected instructions by construction. The
+`confirmation` study answers that objection on a reduced grid (SQuAD, 100 queries, one seed,
+four configurations, three attacks) using real models.
+
+It calls a metered endpoint, so it is excluded from a bare `ragsec suite` and must be named:
+
+```bash
+export OPENAI_API_KEY=...        # read from the environment, never stored
+ragsec suite --studies confirmation --datasets squad --seeds 0
+ragsec suite --studies confirmation --datasets squad --seeds 0 --models gpt-4o-mini
+```
+
+Completions are cached in `results/paper/llm-cache.sqlite`, keyed by model, temperature,
+system prompt and prompt. An interrupted run resumes without paying twice, and re-running to
+fix a reporting bug costs nothing. Rate limits and transient server errors are retried with
+backoff, honouring `Retry-After`.
+
+Two measurement caveats apply to real generators and not to the mock. A verbose model may
+mention both the true and the decoy answer in one response, which inflates accuracy and attack
+success together; and `max_tokens` is capped at 128, which is ample for extractive answers but
+would truncate a discursive one.
 
 Single configurations can still be run directly:
 

@@ -33,3 +33,9 @@ paper-submission/*.pdf
 *.synctex.gz
 *.fls
 *.fdb_latexmk
+
+# Overleaf upload bundle, rebuilt on demand.
+RAGSec-*.zip
+
+# Cached API completions: large, and specific to one machine's runs.
+results/paper/llm-cache.sqlite

@@ -141,6 +141,7 @@ def cmd_suite(args: argparse.Namespace) -> int:
         seeds=args.seeds or None,
         output_dir=args.output_dir,
         resume=not args.no_resume,
+        models=args.models or None,
     )
     for study in args.studies or list(STUDIES):
         print(f"{study}: {len(rows.get(study, []))} rows -> {args.output_dir}/{study}.jsonl")
@@ -230,6 +231,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_suite.add_argument("--seeds", nargs="*", type=int, default=[], help="random seeds")
     p_suite.add_argument("--output-dir", default="results/paper")
     p_suite.add_argument("--no-resume", action="store_true", help="recompute finished cells")
+    p_suite.add_argument(
+        "--models", nargs="*", default=[],
+        help="models for the paid confirmation study (default: gpt-4o-mini gpt-4o)",
+    )
     p_suite.set_defaults(func=cmd_suite)
 
     p_fig = sub.add_parser("figures", help="build the paper's tables and figures from results")
