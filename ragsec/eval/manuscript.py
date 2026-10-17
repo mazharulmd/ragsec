@@ -1,7 +1,7 @@
 """Assemble the single self-contained MDPI submission file.
 
 MDPI asks for one ``.tex`` per submission, so this module flattens the working sources into
-``RAG Security Paper/template.tex``: the front matter below, then every generated result macro
+``paper/generated/template.tex``: the front matter below, then every generated result macro
 as a literal definition, then the body with each ``\\input`` of a table replaced by that table's
 text and each figure path rewritten to the submission layout, then the bibliography.
 

@@ -64,5 +64,5 @@ jobs:
           path: |
             paper/figures/
             paper/tables/
-            RAG Security Paper/template.tex
+            paper/generated/template.tex
           retention-days: 14

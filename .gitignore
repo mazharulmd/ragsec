@@ -17,12 +17,13 @@ results/*
 .DS_Store
 
 # Build artefact: the submission folder is versioned, the zip of it is not.
+RAGSec Paper.zip
 RAG Security Paper.zip
 
 # MDPI's LaTeX class, bibliography styles and logos are their copyright and are not
 # redistributed here. Download the Information template from the journal's author pages
 # and drop its Definitions/ directory into "RAG Security Paper/" to compile.
-RAG Security Paper/Definitions/
+paper-submission/Definitions/
 
 # LaTeX build products
 *.aux

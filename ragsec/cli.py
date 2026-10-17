@@ -246,7 +246,7 @@ def build_parser() -> argparse.ArgumentParser:
         "manuscript", help="assemble the single self-contained MDPI submission .tex"
     )
     p_ms.add_argument("--project-root", default=".")
-    p_ms.add_argument("--output", default="RAG Security Paper/template.tex")
+    p_ms.add_argument("--output", default="paper/generated/template.tex")
     p_ms.add_argument("--journal", default="information")
     p_ms.set_defaults(func=cmd_manuscript)
     return parser

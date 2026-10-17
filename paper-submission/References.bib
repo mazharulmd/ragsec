@@ -1,0 +1,531 @@
+% References.bib for "RAGSec: A Defense Framework for RAG Under Adaptive Knowledge Poisoning"
+% Keys match the \cite / \citep / \citet keys used in the manuscript.
+
+%% ---------------------------------------------------------------- RAG
+@inproceedings{lewis2020,
+  author    = {Lewis, Patrick and Perez, Ethan and Piktus, Aleksandra and Petroni, Fabio and Karpukhin, Vladimir and Goyal, Naman and K{\"u}ttler, Heinrich and Lewis, Mike and Yih, Wen-tau and Rockt{\"a}schel, Tim and Riedel, Sebastian and Kiela, Douwe},
+  title     = {Retrieval-Augmented Generation for Knowledge-Intensive {NLP} Tasks},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {33},
+  pages     = {9459--9474},
+  publisher = {Curran Associates},
+  address   = {Red Hook, NY, USA},
+  year      = {2020}
+}
+
+@inproceedings{guu2020,
+  author    = {Guu, Kelvin and Lee, Kenton and Tung, Zora and Pasupat, Panupong and Chang, Ming-Wei},
+  title     = {{REALM}: Retrieval-Augmented Language Model Pre-Training},
+  booktitle = {Proceedings of the 37th International Conference on Machine Learning (ICML)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {119},
+  pages     = {3929--3938},
+  publisher = {PMLR},
+  year      = {2020}
+}
+
+@inproceedings{karpukhin2020dpr,
+  author    = {Karpukhin, Vladimir and O{\u{g}}uz, Barlas and Min, Sewon and Lewis, Patrick and Wu, Ledell and Edunov, Sergey and Chen, Danqi and Yih, Wen-tau},
+  title     = {Dense Passage Retrieval for Open-Domain Question Answering},
+  booktitle = {Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages     = {6769--6781},
+  publisher = {Association for Computational Linguistics},
+  address   = {Stroudsburg, PA, USA},
+  year      = {2020}
+}
+
+@inproceedings{izacard2021fid,
+  author    = {Izacard, Gautier and Grave, Edouard},
+  title     = {Leveraging Passage Retrieval with Generative Models for Open Domain Question Answering},
+  booktitle = {Proceedings of the 16th Conference of the European Chapter of the Association for Computational Linguistics (EACL): Main Volume},
+  pages     = {874--880},
+  publisher = {Association for Computational Linguistics},
+  address   = {Stroudsburg, PA, USA},
+  year      = {2021}
+}
+
+@inproceedings{borgeaud2022retro,
+  author    = {Borgeaud, Sebastian and Mensch, Arthur and Hoffmann, Jordan and Cai, Trevor and Rutherford, Eliza and Millican, Katie and van den Driessche, George and Lespiau, Jean-Baptiste and Damoc, Bogdan and Clark, Aidan and others},
+  title     = {Improving Language Models by Retrieving from Trillions of Tokens},
+  booktitle = {Proceedings of the 39th International Conference on Machine Learning (ICML)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {162},
+  pages     = {2206--2240},
+  publisher = {PMLR},
+  year      = {2022}
+}
+
+@inproceedings{shi2023replug,
+  author    = {Shi, Weijia and Min, Sewon and Yasunaga, Michihiro and Seo, Minjoon and James, Richard and Lewis, Mike and Zettlemoyer, Luke and Yih, Wen-tau},
+  title     = {{REPLUG}: Retrieval-Augmented Black-Box Language Models},
+  booktitle = {Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL), Volume 1: Long Papers},
+  pages     = {8371--8384},
+  publisher = {Association for Computational Linguistics},
+  address   = {Stroudsburg, PA, USA},
+  year      = {2024}
+}
+
+@inproceedings{asai2023selfrag,
+  author    = {Asai, Akari and Wu, Zeqiu and Wang, Yizhong and Sil, Avirup and Hajishirzi, Hannaneh},
+  title     = {{Self-RAG}: Learning to Retrieve, Generate, and Critique through Self-Reflection},
+  booktitle = {Proceedings of the 12th International Conference on Learning Representations (ICLR)},
+  year      = {2024}
+}
+
+@article{gao2024survey,
+  author    = {Gao, Yunfan and Xiong, Yun and Gao, Xinyu and Jia, Kangxiang and Pan, Jinliu and Bi, Yuxi and Dai, Yi and Sun, Jiawei and Wang, Meng and Wang, Haofen},
+  title     = {Retrieval-Augmented Generation for Large Language Models: A Survey},
+  journal   = {arXiv},
+  pages     = {arXiv:2312.10997},
+  year      = {2023}
+}
+
+@inproceedings{yoran2024robust,
+  author    = {Yoran, Ori and Wolfson, Tomer and Ram, Ori and Berant, Jonathan},
+  title     = {Making Retrieval-Augmented Language Models Robust to Irrelevant Context},
+  booktitle = {Proceedings of the 12th International Conference on Learning Representations (ICLR)},
+  year      = {2024}
+}
+
+@inproceedings{cuconasu2024noise,
+  author    = {Cuconasu, Florin and Trappolini, Giovanni and Siciliano, Federico and Filice, Simone and Campagnano, Cesare and Maarek, Yoelle and Tonellotto, Nicola and Silvestri, Fabrizio},
+  title     = {The Power of Noise: Redefining Retrieval for {RAG} Systems},
+  booktitle = {Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval},
+  pages     = {719--729},
+  publisher = {ACM},
+  address   = {New York, NY, USA},
+  year      = {2024}
+}
+
+%% ---------------------------------------------------------------- Poisoning
+@inproceedings{biggio2012poisoning,
+  author    = {Biggio, Battista and Nelson, Blaine and Laskov, Pavel},
+  title     = {Poisoning Attacks against Support Vector Machines},
+  booktitle = {Proceedings of the 29th International Conference on Machine Learning (ICML)},
+  publisher = {Omnipress},
+  address   = {Madison, WI, USA},
+  year      = {2012}
+}
+
+@article{gu2017badnets,
+  author    = {Gu, Tianyu and Liu, Kang and Dolan-Gavitt, Brendan and Garg, Siddharth},
+  title     = {{BadNets}: Evaluating Backdooring Attacks on Deep Neural Networks},
+  journal   = {IEEE Access},
+  volume    = {7},
+  pages     = {47230--47244},
+  year      = {2019}
+}
+
+@inproceedings{carlini2024poison,
+  author    = {Carlini, Nicholas and Jagielski, Matthew and Choquette-Choo, Christopher A. and Paleka, Daniel and Pearce, Will and Anderson, Hyrum and Terzis, Andreas and Thomas, Kurt and Tram{\`e}r, Florian},
+  title     = {Poisoning Web-Scale Training Datasets Is Practical},
+  booktitle = {Proceedings of the 2024 IEEE Symposium on Security and Privacy (SP)},
+  pages     = {407--425},
+  publisher = {IEEE},
+  address   = {Piscataway, NJ, USA},
+  year      = {2024}
+}
+
+@inproceedings{zhong2023,
+  author    = {Zhong, Zexuan and Huang, Ziqing and Wettig, Alexander and Chen, Danqi},
+  title     = {Poisoning Retrieval Corpora by Injecting Adversarial Passages},
+  booktitle = {Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages     = {13764--13775},
+  publisher = {Association for Computational Linguistics},
+  address   = {Stroudsburg, PA, USA},
+  year      = {2023}
+}
+
+@inproceedings{zou2024,
+  author    = {Zou, Wei and Geng, Runpeng and Wang, Binghui and Jia, Jinyuan},
+  title     = {{PoisonedRAG}: Knowledge Corruption Attacks to Retrieval-Augmented Generation of Large Language Models},
+  booktitle = {Proceedings of the 34th USENIX Security Symposium},
+  pages     = {3827--3844},
+  publisher = {USENIX Association},
+  address   = {Berkeley, CA, USA},
+  year      = {2025}
+}
+
+@article{xue2024badrag,
+  author    = {Xue, Jiaqi and Zheng, Mengxin and Hu, Yebowen and Liu, Fei and Chen, Xun and Lou, Qian},
+  title     = {{BadRAG}: Identifying Vulnerabilities in Retrieval Augmented Generation of Large Language Models},
+  journal   = {arXiv},
+  pages     = {arXiv:2406.00083},
+  year      = {2024}
+}
+
+@article{cheng2024trojanrag,
+  author    = {Cheng, Pengzhou and Ding, Yidong and Ju, Tianjie and Wu, Zongru and Du, Wei and Yi, Ping and Zhang, Zhuosheng and Liu, Gongshen},
+  title     = {{TrojanRAG}: Retrieval-Augmented Generation Can Be Backdoor Driver in Large Language Models},
+  journal   = {arXiv},
+  pages     = {arXiv:2405.13401},
+  year      = {2024}
+}
+
+@article{chaudhari2024phantom,
+  author    = {Chaudhari, Harsh and Severi, Giorgio and Abascal, John and Jagielski, Matthew and Choquette-Choo, Christopher A. and Nasr, Milad and Nita-Rotaru, Cristina and Oprea, Alina},
+  title     = {Phantom: General Trigger Attacks on Retrieval Augmented Language Generation},
+  journal   = {arXiv},
+  pages     = {arXiv:2405.20485},
+  year      = {2024}
+}
+
+@inproceedings{shafran2024jamming,
+  author    = {Shafran, Avital and Schuster, Roei and Shmatikov, Vitaly},
+  title     = {Machine Against the {RAG}: Jamming Retrieval-Augmented Generation with Blocker Documents},
+  booktitle = {Proceedings of the 34th USENIX Security Symposium},
+  pages     = {3787--3806},
+  publisher = {USENIX Association},
+  address   = {Berkeley, CA, USA},
+  year      = {2025}
+}
+
+@inproceedings{tan2024glue,
+  author    = {Tan, Zhen and Zhao, Chengshuai and Moraffah, Raha and Li, Yifan and Wang, Song and Li, Jundong and Chen, Tianlong and Liu, Huan},
+  title     = {``Glue Pizza and Eat Rocks'' -- Exploiting Vulnerabilities in Retrieval-Augmented Generative Models},
+  booktitle = {Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages     = {1610--1626},
+  publisher = {Association for Computational Linguistics},
+  address   = {Stroudsburg, PA, USA},
+  year      = {2024}
+}
+
+@article{deng2024pandora,
+  author    = {Deng, Gelei and Liu, Yi and Wang, Kailong and Li, Yuekang and Zhang, Tianwei and Liu, Yang},
+  title     = {Pandora: Jailbreak {GPTs} by Retrieval Augmented Generation Poisoning},
+  journal   = {arXiv},
+  pages     = {arXiv:2402.08416},
+  year      = {2024}
+}
+
+@inproceedings{ohm2020backstabber,
+  author    = {Ohm, Marc and Plate, Henrik and Sykosch, Arnold and Meier, Michael},
+  title     = {Backstabber's Knife Collection: A Review of Open Source Software Supply Chain Attacks},
+  booktitle = {Detection of Intrusions and Malware, and Vulnerability Assessment (DIMVA)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {12223},
+  pages     = {23--43},
+  publisher = {Springer},
+  address   = {Cham, Switzerland},
+  year      = {2020}
+}
+
+%% ---------------------------------------------------------------- Prompt injection
+@article{perez2022ignore,
+  author    = {Perez, F{\'a}bio and Ribeiro, Ian},
+  title     = {Ignore Previous Prompt: Attack Techniques for Language Models},
+  journal   = {arXiv},
+  pages     = {arXiv:2211.09527},
+  year      = {2022}
+}
+
+@inproceedings{greshake2023,
+  author    = {Greshake, Kai and Abdelnabi, Sahar and Mishra, Shailesh and Endres, Christoph and Holz, Thorsten and Fritz, Mario},
+  title     = {Not What You've Signed Up For: Compromising Real-World {LLM}-Integrated Applications with Indirect Prompt Injection},
+  booktitle = {Proceedings of the 16th ACM Workshop on Artificial Intelligence and Security (AISec)},
+  pages     = {79--90},
+  publisher = {ACM},
+  address   = {New York, NY, USA},
+  year      = {2023}
+}
+
+@article{liu2023promptinjection,
+  author    = {Liu, Yi and Deng, Gelei and Li, Yuekang and Wang, Kailong and Wang, Zihao and Wang, Xiaofeng and Zhang, Tianwei and Liu, Yepang and Wang, Haoyu and Zheng, Yan and others},
+  title     = {Prompt Injection Attack against {LLM}-Integrated Applications},
+  journal   = {arXiv},
+  pages     = {arXiv:2306.05499},
+  year      = {2023}
+}
+
+@inproceedings{liu2024formalizing,
+  author    = {Liu, Yupei and Jia, Yuqi and Geng, Runpeng and Jia, Jinyuan and Gong, Neil Zhenqiang},
+  title     = {Formalizing and Benchmarking Prompt Injection Attacks and Defenses},
+  booktitle = {Proceedings of the 33rd USENIX Security Symposium},
+  pages     = {1831--1847},
+  publisher = {USENIX Association},
+  address   = {Berkeley, CA, USA},
+  year      = {2024}
+}
+
+@article{wallace2024hierarchy,
+  author    = {Wallace, Eric and Xiao, Kai and Leike, Reimar and Weng, Lilian and Heidecke, Johannes and Beutel, Alex},
+  title     = {The Instruction Hierarchy: Training {LLMs} to Prioritize Privileged Instructions},
+  journal   = {arXiv},
+  pages     = {arXiv:2404.13208},
+  year      = {2024}
+}
+
+@inproceedings{chen2024struq,
+  author    = {Chen, Sizhe and Piet, Julien and Sitawarin, Chawin and Wagner, David},
+  title     = {{StruQ}: Defending against Prompt Injection with Structured Queries},
+  booktitle = {Proceedings of the 34th USENIX Security Symposium},
+  pages     = {2383--2400},
+  publisher = {USENIX Association},
+  address   = {Berkeley, CA, USA},
+  year      = {2025}
+}
+
+@inproceedings{chen2025secalign,
+  author    = {Chen, Sizhe and Zharmagambetov, Arman and Mahloujifar, Saeed and Chaudhuri, Kamalika and Wagner, David and Guo, Chuan},
+  title     = {{SecAlign}: Defending against Prompt Injection with Preference Optimization},
+  booktitle = {Proceedings of the 2025 ACM SIGSAC Conference on Computer and Communications Security (CCS)},
+  pages     = {2833--2847},
+  publisher = {ACM},
+  address   = {New York, NY, USA},
+  year      = {2025}
+}
+
+@article{hines2024spotlighting,
+  author    = {Hines, Keegan and Lopez, Gary and Hall, Matthew and Zarfati, Federico and Zunger, Yonatan and Kiciman, Emre},
+  title     = {Defending Against Indirect Prompt Injection Attacks with Spotlighting},
+  journal   = {arXiv},
+  pages     = {arXiv:2403.14720},
+  year      = {2024}
+}
+
+@article{alon2023perplexity,
+  author    = {Alon, Gabriel and Kamfonas, Michael},
+  title     = {Detecting Language Model Attacks with Perplexity},
+  journal   = {arXiv},
+  pages     = {arXiv:2308.14132},
+  year      = {2023}
+}
+
+@article{jain2023baseline,
+  author    = {Jain, Neel and Schwarzschild, Avi and Wen, Yuxin and Somepalli, Gowthami and Kirchenbauer, John and Chiang, Ping-yeh and Goldblum, Micah and Saha, Aniruddha and Geiping, Jonas and Goldstein, Tom},
+  title     = {Baseline Defenses for Adversarial Attacks against Aligned Language Models},
+  journal   = {arXiv},
+  pages     = {arXiv:2309.00614},
+  year      = {2023}
+}
+
+%% ---------------------------------------------------------------- RAG defenses
+@article{xiang2024robustrag,
+  author    = {Xiang, Chong and Wu, Tong and Zhong, Zexuan and Wagner, David and Chen, Danqi and Mittal, Prateek},
+  title     = {Certifiably Robust {RAG} against Retrieval Corruption},
+  journal   = {arXiv},
+  pages     = {arXiv:2405.15556},
+  year      = {2024}
+}
+
+@article{zhou2025trustrag,
+  author    = {Zhou, Huichi and Lee, Kin-Hei and Zhan, Zhonghao and Chen, Yue and Li, Zhenhao and Wang, Zhaoyang and Haddadi, Hamed and Yilmaz, Emine},
+  title     = {{TrustRAG}: Enhancing Robustness and Trustworthiness in Retrieval-Augmented Generation},
+  journal   = {arXiv},
+  pages     = {arXiv:2501.00879},
+  year      = {2025}
+}
+
+@inproceedings{weller2024defending,
+  author    = {Weller, Orion and Khan, Aleem and Weir, Nathaniel and Lawrie, Dawn and Van Durme, Benjamin},
+  title     = {Defending Against Disinformation Attacks in Open-Domain Question Answering},
+  booktitle = {Proceedings of the 18th Conference of the European Chapter of the Association for Computational Linguistics (EACL), Volume 2: Short Papers},
+  pages     = {402--417},
+  publisher = {Association for Computational Linguistics},
+  address   = {Stroudsburg, PA, USA},
+  year      = {2024}
+}
+
+%% ---------------------------------------------------------------- Adaptive evaluation
+@inproceedings{carlini2017bypassing,
+  author    = {Carlini, Nicholas and Wagner, David},
+  title     = {Adversarial Examples Are Not Easily Detected: Bypassing Ten Detection Methods},
+  booktitle = {Proceedings of the 10th ACM Workshop on Artificial Intelligence and Security (AISec)},
+  pages     = {3--14},
+  publisher = {ACM},
+  address   = {New York, NY, USA},
+  year      = {2017}
+}
+
+@inproceedings{athalye2018obfuscated,
+  author    = {Athalye, Anish and Carlini, Nicholas and Wagner, David},
+  title     = {Obfuscated Gradients Give a False Sense of Security: Circumventing Defenses to Adversarial Examples},
+  booktitle = {Proceedings of the 35th International Conference on Machine Learning (ICML)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {80},
+  pages     = {274--283},
+  publisher = {PMLR},
+  year      = {2018}
+}
+
+@article{carlini2019evaluating,
+  author    = {Carlini, Nicholas and Athalye, Anish and Papernot, Nicolas and Brendel, Wieland and Rauber, Jonas and Tsipras, Dimitris and Goodfellow, Ian and Madry, Aleksander and Kurakin, Alexey},
+  title     = {On Evaluating Adversarial Robustness},
+  journal   = {arXiv},
+  pages     = {arXiv:1902.06705},
+  year      = {2019}
+}
+
+@inproceedings{tramer2020adaptive,
+  author    = {Tram{\`e}r, Florian and Carlini, Nicholas and Brendel, Wieland and Madry, Aleksander},
+  title     = {On Adaptive Attacks to Adversarial Example Defenses},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {33},
+  pages     = {1633--1645},
+  publisher = {Curran Associates},
+  address   = {Red Hook, NY, USA},
+  year      = {2020}
+}
+
+%% ---------------------------------------------------------------- Provenance / supply chain
+@techreport{krawczyk1997hmac,
+  author      = {Krawczyk, Hugo and Bellare, Mihir and Canetti, Ran},
+  title       = {{HMAC}: Keyed-Hashing for Message Authentication},
+  type        = {RFC},
+  number      = {2104},
+  institution = {Internet Engineering Task Force},
+  address     = {Fremont, CA, USA},
+  doi         = {10.17487/RFC2104},
+  year        = {1997}
+}
+
+@inproceedings{torresarias2019intoto,
+  author    = {Torres-Arias, Santiago and Afzali, Hammad and Kuppusamy, Trishank Karthik and Curtmola, Reza and Cappos, Justin},
+  title     = {in-toto: Providing Farm-to-Table Guarantees for Bits and Bytes},
+  booktitle = {Proceedings of the 28th USENIX Security Symposium},
+  pages     = {1393--1410},
+  publisher = {USENIX Association},
+  address   = {Berkeley, CA, USA},
+  year      = {2019}
+}
+
+@inproceedings{newman2022sigstore,
+  author    = {Newman, Zachary and Meyers, John Speed and Torres-Arias, Santiago},
+  title     = {Sigstore: Software Signing for Everybody},
+  booktitle = {Proceedings of the 2022 ACM SIGSAC Conference on Computer and Communications Security (CCS)},
+  pages     = {2353--2367},
+  publisher = {ACM},
+  address   = {New York, NY, USA},
+  year      = {2022}
+}
+
+@techreport{nist2022ssdf,
+  author      = {Souppaya, Murugiah and Scarfone, Karen and Dodson, Donna},
+  title       = {Secure Software Development Framework ({SSDF}) Version 1.1},
+  type        = {NIST Special Publication},
+  number      = {800-218},
+  institution = {National Institute of Standards and Technology},
+  address     = {Gaithersburg, MD, USA},
+  doi         = {10.6028/NIST.SP.800-218},
+  year        = {2022}
+}
+
+@techreport{vassilev2024nistaml,
+  author      = {Vassilev, Apostol and Oprea, Alina and Fordyce, Alie and Anderson, Hyrum},
+  title       = {Adversarial Machine Learning: A Taxonomy and Terminology of Attacks and Mitigations},
+  type        = {NIST AI},
+  number      = {100-2 E2023},
+  institution = {National Institute of Standards and Technology},
+  address     = {Gaithersburg, MD, USA},
+  doi         = {10.6028/NIST.AI.100-2e2023},
+  year        = {2024}
+}
+
+@misc{owasp2025llm,
+  author       = {{OWASP Foundation}},
+  title        = {{OWASP} Top 10 for Large Language Model Applications},
+  howpublished = {\url{https://genai.owasp.org/llm-top-10/}},
+  year         = {2025}
+}
+
+%% ---------------------------------------------------------------- Data, models, statistics
+@inproceedings{rajpurkar2016squad,
+  author    = {Rajpurkar, Pranav and Zhang, Jian and Lopyrev, Konstantin and Liang, Percy},
+  title     = {{SQuAD}: 100,000+ Questions for Machine Comprehension of Text},
+  booktitle = {Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages     = {2383--2392},
+  publisher = {Association for Computational Linguistics},
+  address   = {Stroudsburg, PA, USA},
+  year      = {2016}
+}
+
+@inproceedings{yang2018hotpotqa,
+  author    = {Yang, Zhilin and Qi, Peng and Zhang, Saizheng and Bengio, Yoshua and Cohen, William W. and Salakhutdinov, Ruslan and Manning, Christopher D.},
+  title     = {{HotpotQA}: A Dataset for Diverse, Explainable Multi-Hop Question Answering},
+  booktitle = {Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages     = {2369--2380},
+  publisher = {Association for Computational Linguistics},
+  address   = {Stroudsburg, PA, USA},
+  year      = {2018}
+}
+
+@inproceedings{reimers2019sbert,
+  author    = {Reimers, Nils and Gurevych, Iryna},
+  title     = {{Sentence-BERT}: Sentence Embeddings Using {Siamese BERT}-Networks},
+  booktitle = {Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)},
+  pages     = {3982--3992},
+  publisher = {Association for Computational Linguistics},
+  address   = {Stroudsburg, PA, USA},
+  year      = {2019}
+}
+
+@inproceedings{wang2020minilm,
+  author    = {Wang, Wenhui and Wei, Furu and Dong, Li and Bao, Hangbo and Yang, Nan and Zhou, Ming},
+  title     = {{MiniLM}: Deep Self-Attention Distillation for Task-Agnostic Compression of Pre-Trained Transformers},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {33},
+  pages     = {5776--5788},
+  publisher = {Curran Associates},
+  address   = {Red Hook, NY, USA},
+  year      = {2020}
+}
+
+@article{johnson2021faiss,
+  author    = {Johnson, Jeff and Douze, Matthijs and J{\'e}gou, Herv{\'e}},
+  title     = {Billion-Scale Similarity Search with {GPUs}},
+  journal   = {IEEE Transactions on Big Data},
+  volume    = {7},
+  number    = {3},
+  pages     = {535--547},
+  year      = {2021}
+}
+
+@article{lin1991divergence,
+  author    = {Lin, Jianhua},
+  title     = {Divergence Measures Based on the {Shannon} Entropy},
+  journal   = {IEEE Transactions on Information Theory},
+  volume    = {37},
+  number    = {1},
+  pages     = {145--151},
+  year      = {1991}
+}
+
+@article{wilson1927,
+  author    = {Wilson, Edwin B.},
+  title     = {Probable Inference, the Law of Succession, and Statistical Inference},
+  journal   = {Journal of the American Statistical Association},
+  volume    = {22},
+  number    = {158},
+  pages     = {209--212},
+  year      = {1927}
+}
+
+@article{brown2001interval,
+  author    = {Brown, Lawrence D. and Cai, T. Tony and DasGupta, Anirban},
+  title     = {Interval Estimation for a Binomial Proportion},
+  journal   = {Statistical Science},
+  volume    = {16},
+  number    = {2},
+  pages     = {101--117},
+  year      = {2001}
+}
+
+@inproceedings{davis2006prc,
+  author    = {Davis, Jesse and Goadrich, Mark},
+  title     = {The Relationship between Precision-Recall and {ROC} Curves},
+  booktitle = {Proceedings of the 23rd International Conference on Machine Learning (ICML)},
+  pages     = {233--240},
+  publisher = {ACM},
+  address   = {New York, NY, USA},
+  year      = {2006}
+}
+
+@article{saito2015prc,
+  author    = {Saito, Takaya and Rehmsmeier, Marc},
+  title     = {The Precision-Recall Plot Is More Informative than the {ROC} Plot When Evaluating Binary Classifiers on Imbalanced Datasets},
+  journal   = {PLoS ONE},
+  volume    = {10},
+  number    = {3},
+  pages     = {e0118432},
+  year      = {2015}
+}
