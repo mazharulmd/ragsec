@@ -157,6 +157,7 @@ def cmd_suite(args: argparse.Namespace) -> int:
         base_url=args.base_url or None,
         api_key_env=args.api_key_env or None,
         queries=args.queries or None,
+        confirmation_configs=args.confirmation_configs or None,
     )
     for study in args.studies or list(STUDIES):
         print(f"{study}: {len(rows.get(study, []))} rows -> {args.output_dir}/{study}.jsonl")
@@ -270,6 +271,11 @@ def build_parser() -> argparse.ArgumentParser:
             "queries per corpus in the confirmation study (default 100). Lower it to stay "
             "inside a provider's free-tier request cap"
         ),
+    )
+    p_suite.add_argument(
+        "--confirmation-configs", nargs="+", default=None,
+        choices=("none", "L1", "L2", "L3", "L4", "full", "full_signed"),
+        help="defense configurations for the confirmation study (default: all seven)",
     )
     p_suite.set_defaults(func=cmd_suite)
 

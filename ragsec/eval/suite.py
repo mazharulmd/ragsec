@@ -92,6 +92,9 @@ CONFIRMATION_MODELS: list[str] = ["gpt-4o-mini", "gpt-4o"]
 #: the full factorial at API prices.
 CONFIRMATION_QUERIES = 100
 
+#: Confirmation ablations expose each component's clean-utility cost on real generators.
+CONFIRMATION_CONFIGS = ("none", "L1", "L2", "L3", "L4", "full", "full_signed")
+
 #: Where completions are cached, so an interrupted run resumes without paying twice.
 CONFIRMATION_CACHE = "results/paper/llm-cache.sqlite"
 
@@ -672,7 +675,11 @@ def study_provenance(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                 )
 
 
-def study_confirmation(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
+def study_confirmation(
+    datasets: list[str],
+    seeds: list[int],
+    configs: list[str] | None = None,
+) -> Iterator[Cell]:
     """Repeat the headline comparison on real language models.
 
     Every other study uses the deterministic mock generator. That is a deliberate instrument:
@@ -687,7 +694,7 @@ def study_confirmation(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
     real model may resist that, so this is the experiment most able to overturn the paper's
     central claim.
     """
-    configs = ("none", "L2", "full", "full_signed")
+    configs = tuple(CONFIRMATION_CONFIGS if configs is None else configs)
     attacks = [
         {"name": "poisoned_rag", "n_per_target": 1},
         {"name": "prompt_injection", "n_per_target": 1},
@@ -774,6 +781,7 @@ def run_suite(
     base_url: str | None = None,
     api_key_env: str | None = None,
     queries: int | None = None,
+    confirmation_configs: list[str] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Run the requested studies and return ``{study: rows}``.
 
@@ -786,6 +794,17 @@ def run_suite(
         CONFIRMATION_MODELS = list(models)
     if queries:
         CONFIRMATION_QUERIES = queries
+    if confirmation_configs is not None:
+        valid_configs = set(CONFIRMATION_CONFIGS)
+        unknown_configs = set(confirmation_configs) - valid_configs
+        if unknown_configs:
+            raise ValueError(
+                f"Unknown confirmation configurations {sorted(unknown_configs)}; "
+                f"choose from {sorted(valid_configs)}"
+            )
+        if not confirmation_configs:
+            raise ValueError("confirmation_configs must contain at least one configuration")
+        confirmation_configs = list(dict.fromkeys(confirmation_configs))
     if base_url:
         CONFIRMATION_BASE_URL = base_url
     if api_key_env:
@@ -798,7 +817,10 @@ def run_suite(
     for study in studies:
         if study not in STUDIES:
             raise ValueError(f"Unknown study {study!r}; choose from {sorted(STUDIES)}")
-        cells = list(STUDIES[study](datasets, seeds))
+        if study == "confirmation":
+            cells = list(study_confirmation(datasets, seeds, confirmation_configs))
+        else:
+            cells = list(STUDIES[study](datasets, seeds))
         print(f"\n=== {study}: {len(cells)} cells ===", flush=True)
         out[study] = run_study(cells, directory / f"{study}.jsonl", resume=resume)
     return out

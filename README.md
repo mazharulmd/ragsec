@@ -153,7 +153,9 @@ generator behaviour exactly, so a change in measured attack success is attributa
 retrieval pipeline rather than to sampling, and it makes a 612-cell factorial affordable. It is
 also the obvious objection, since the mock obeys injected instructions by construction. The
 `confirmation` study answers that objection on a reduced grid (SQuAD, 100 queries, one seed,
-four configurations, three attacks) using real models.
+seven configurations, three attacks) using real models. It measures the four individual layers
+(`L1`–`L4`), the full stack, and the signed-ingestion variant alongside the no-defense baseline.
+Use `--confirmation-configs` to select a subset while investigating a particular component.
 
 It calls an OpenAI-compatible model endpoint, which may be local or metered, so it is excluded
 from a bare `ragsec suite` and must be named:
@@ -162,6 +164,11 @@ from a bare `ragsec suite` and must be named:
 export OPENAI_API_KEY=...        # read from the environment, never stored
 ragsec suite --studies confirmation --datasets squad --seeds 0
 ragsec suite --studies confirmation --datasets squad --seeds 0 --models gpt-4o-mini
+
+# Run selected component ablations with a local Ollama endpoint
+ragsec suite --studies confirmation --datasets squad --seeds 0 --models qwen2.5:7b \
+  --base-url http://127.0.0.1:11434/v1 --api-key-env RAGSEC_LOCAL_API_KEY \
+  --confirmation-configs L1 L3 L4 --output-dir results/qwen-ablation
 ```
 
 Any OpenAI-compatible `/chat/completions` endpoint works, so the study can run against a
