@@ -28,13 +28,19 @@ and never recomputes a finished cell.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
+import os
+import shutil
+import sys
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from ragsec.core.embedder import DEFAULT_ST_MODEL_REVISION
 from ragsec.eval.data import HOTPOTQA_REVISION, SQUAD_REVISION
 from ragsec.eval.metrics import rate_with_ci
 from ragsec.eval.runner import CLEAN_RUN, ExperimentConfig, ExperimentRunner
@@ -185,10 +191,13 @@ def base_config(
     follow_injections: bool = True,
     embedder: str = "sentence-transformers",
 ) -> ExperimentConfig:
+    embedder_spec: dict[str, Any] = {"name": embedder}
+    if embedder in {"sentence-transformers", "st"}:
+        embedder_spec["revision"] = DEFAULT_ST_MODEL_REVISION
     return ExperimentConfig(
         name=f"{dataset}-{config}-s{seed}",
         dataset=DATASETS[dataset],
-        embedder={"name": embedder},
+        embedder=embedder_spec,
         llm={"name": "mock", "follow_injections": follow_injections},
         pipeline={"top_k": top_k, "candidate_multiplier": candidate_multiplier},
         attacks=attacks,
@@ -231,6 +240,7 @@ def _row(cell: Cell, result: Any, wall_s: float) -> dict[str, Any]:
     ]
     _, acc_low, acc_high = rate_with_ci(acc_flags)
     dataset_spec = cell.config.dataset
+    embedder_spec = result.config.get("resolved_embedder", cell.config.embedder)
     dataset_name = dataset_spec.get("name", "toy")
     dataset_source = dataset_spec.get("path") or (
         "hotpotqa/hotpot_qa" if dataset_name in {"hotpot", "hotpotqa"} else dataset_name
@@ -243,6 +253,12 @@ def _row(cell: Cell, result: Any, wall_s: float) -> dict[str, Any]:
         "dataset_config": dataset_spec.get("config"),
         "dataset_revision": dataset_spec.get("revision"),
         "dataset_split": dataset_spec.get("split"),
+        "embedding_backend": embedder_spec.get("backend", embedder_spec.get("name")),
+        "embedding_model": embedder_spec.get("model_name"),
+        "embedding_revision": embedder_spec.get("revision"),
+        "config_fingerprint": config_fingerprint(cell.config),
+        "code_fingerprint": code_fingerprint(),
+        "runtime_fingerprint": runtime_fingerprint(),
         "attack": result.attack,
         "n_alerts": len(result.alerts),
         "alert_kinds": sorted({a["kind"] for a in result.alerts}),
@@ -293,9 +309,13 @@ def run_cell(cell: Cell, query_path: Path | None = None) -> list[dict[str, Any]]
                     "dataset_config": dataset_spec.get("config"),
                     "dataset_revision": dataset_spec.get("revision"),
                     "dataset_split": dataset_spec.get("split"),
+                    "config_fingerprint": config_fingerprint(cell.config),
+                    "code_fingerprint": code_fingerprint(),
+                    "runtime_fingerprint": runtime_fingerprint(),
                     "attack": result.attack,
                     "run_name": result.name,
                     "_cell": cell_id(cell),
+                    "_cell_label": cell_label(cell),
                 }
                 for record in result.records:
                     outcome = record.to_dict()
@@ -305,16 +325,78 @@ def run_cell(cell: Cell, query_path: Path | None = None) -> list[dict[str, Any]]
     return [_row(cell, result, wall / max(1, len(results))) for result in results]
 
 
-def cell_id(cell: Cell) -> str:
-    return json.dumps(
-        {
-            "study": cell.study,
-            **cell.key,
-            **cell.extra,
-            "dataset_spec": cell.config.dataset,
-        },
-        sort_keys=True,
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def config_fingerprint(config: ExperimentConfig) -> str:
+    """Hash the full resolved configuration without exposing credential fields in results."""
+    return hashlib.sha256(_canonical_json(config.to_dict()).encode("utf-8")).hexdigest()
+
+
+@lru_cache(maxsize=1)
+def code_fingerprint() -> str:
+    """Hash package sources and project metadata, including uncommitted working-tree edits."""
+    package_root = Path(__file__).resolve().parents[1]
+    project_root = package_root.parent
+    sources = sorted(
+        path
+        for path in package_root.rglob("*")
+        if path.is_file() and path.suffix in {".py", ".json"}
     )
+    sources.append(project_root / "pyproject.toml")
+    digest = hashlib.sha256()
+    for source in sources:
+        digest.update(source.relative_to(project_root).as_posix().encode("utf-8"))
+        digest.update(source.read_bytes())
+    return digest.hexdigest()
+
+
+@lru_cache(maxsize=1)
+def runtime_fingerprint() -> str:
+    """Fingerprint the interpreter and packages that affect data, embedding or retrieval."""
+    packages = (
+        "numpy",
+        "datasets",
+        "sentence-transformers",
+        "transformers",
+        "torch",
+        "faiss-cpu",
+    )
+    versions: dict[str, str | None] = {}
+    for package in packages:
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = None
+    payload = {
+        "python": sys.version,
+        "packages": versions,
+        "environment": {
+            name: os.environ.get(name)
+            for name in ("RAGSEC_EMBEDDER", "HF_HUB_OFFLINE", "CUDA_VISIBLE_DEVICES")
+        },
+    }
+    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def cell_label(cell: Cell) -> str:
+    """Stable label for detecting stale versions of a logical experiment cell."""
+    return _canonical_json(
+        {"study": cell.study, "key": cell.key, "extra": cell.extra}
+    )
+
+
+def cell_id(cell: Cell) -> str:
+    """Identity of a cell's complete configuration, implementation and runtime."""
+    payload = {
+        "label": cell_label(cell),
+        "config": cell.config.to_dict(),
+        "config_fingerprint": config_fingerprint(cell.config),
+        "code_fingerprint": code_fingerprint(),
+        "runtime_fingerprint": runtime_fingerprint(),
+    }
+    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
 
 def run_study(
@@ -327,6 +409,9 @@ def run_study(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done: set[str] = set()
     rows: list[dict[str, Any]] = []
+    if not resume:
+        out_path.unlink(missing_ok=True)
+        shutil.rmtree(out_path.parent / f"{out_path.stem}_query_records", ignore_errors=True)
     if resume and out_path.exists():
         with out_path.open("r", encoding="utf-8") as handle:
             for line in handle:
@@ -334,7 +419,29 @@ def run_study(
                     row = json.loads(line)
                     rows.append(row)
                     done.add(row["_cell"])
-    with out_path.open("a", encoding="utf-8") as handle:
+    for cell in cells:
+        label = cell_label(cell)
+        identifier = cell_id(cell)
+        stale = any(
+            row.get("_cell") != identifier
+            and (
+                row.get("_cell_label") == label
+                or (
+                    row.get("_cell_label") is None
+                    and row.get("study") == cell.study
+                    and all(row.get(key) == value for key, value in cell.key.items())
+                    and all(row.get(key) == value for key, value in cell.extra.items())
+                )
+            )
+            for row in rows
+        )
+        if stale:
+            raise ValueError(
+                f"Existing results for {cell.study} cell {label} use another config or runtime; "
+                "choose a fresh output directory or rerun with resume=False"
+            )
+    mode = "a" if resume else "w"
+    with out_path.open(mode, encoding="utf-8") as handle:
         for index, cell in enumerate(cells, 1):
             identifier = cell_id(cell)
             query_path = (
@@ -347,6 +454,7 @@ def run_study(
             if identifier not in done:
                 for row in cell_rows:
                     row["_cell"] = identifier
+                    row["_cell_label"] = cell_label(cell)
                     rows.append(row)
                     handle.write(json.dumps(row) + "\n")
             handle.flush()

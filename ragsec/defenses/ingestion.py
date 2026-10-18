@@ -10,12 +10,16 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, replace
 
 from ragsec.core.defense import DefenseLayer
 from ragsec.core.models import Document, content_hash
+
+_SIGNATURE_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def document_signing_payload(doc: Document) -> bytes:
@@ -53,6 +57,7 @@ class SourceVerificationLayer(DefenseLayer):
         self,
         allowed_sources: Iterable[str] | None = None,
         source_trust: dict[str, float] | None = None,
+        default_trust: float = 0.5,
         min_trust: float = 0.0,
         hmac_key: bytes | None = None,
         require_signature: bool = False,
@@ -61,7 +66,14 @@ class SourceVerificationLayer(DefenseLayer):
     ) -> None:
         self.allowed_sources = set(allowed_sources) if allowed_sources is not None else None
         self.source_trust = dict(source_trust or {})
+        self.default_trust = default_trust
         self.min_trust = min_trust
+        if not 0.0 <= default_trust <= 1.0:
+            raise ValueError("default_trust must be in [0, 1]")
+        if not 0.0 <= min_trust <= 1.0:
+            raise ValueError("min_trust must be in [0, 1]")
+        if any(not 0.0 <= score <= 1.0 for score in self.source_trust.values()):
+            raise ValueError("source_trust scores must be in [0, 1]")
         self.hmac_key = hmac_key
         self.require_signature = require_signature
         if require_signature and hmac_key is None:
@@ -76,15 +88,23 @@ class SourceVerificationLayer(DefenseLayer):
         accepted: list[Document] = []
         for doc in documents:
             source = doc.provenance.source_id
-            if source in self.source_trust:
-                doc.provenance.trust_score = self.source_trust[source]
-            reason = self._reject_reason(doc)
+            # Trust is policy metadata. Never accept the caller's score as authority, and do
+            # not mutate their object while assigning the trusted score.
+            trusted_doc = replace(
+                doc,
+                provenance=deepcopy(doc.provenance),
+                metadata=dict(doc.metadata),
+            )
+            trusted_doc.provenance.trust_score = self.source_trust.get(
+                source, self.default_trust
+            )
+            reason = self._reject_reason(trusted_doc)
             if reason is not None:
                 self.rejections.append(IngestRejection(doc.doc_id, source, reason))
                 continue
-            self._seen_hashes.add(content_hash(doc.text))
+            self._seen_hashes.add(content_hash(trusted_doc.text))
             self._per_source[source] += 1
-            accepted.append(doc)
+            accepted.append(trusted_doc)
         return accepted
 
     def _reject_reason(self, doc: Document) -> str | None:
@@ -97,10 +117,11 @@ class SourceVerificationLayer(DefenseLayer):
         if signature is None:
             if self.require_signature:
                 return "missing signature"
-        elif self.hmac_key is not None and not hmac.compare_digest(
-            signature, sign_document(doc, self.hmac_key)
-        ):
-            return "invalid signature"
+        elif self.hmac_key is not None:
+            if not isinstance(signature, str) or not _SIGNATURE_RE.fullmatch(signature):
+                return "invalid signature"
+            if not hmac.compare_digest(signature, sign_document(doc, self.hmac_key)):
+                return "invalid signature"
         if self.dedupe and content_hash(doc.text) in self._seen_hashes:
             return "duplicate content"
         if (

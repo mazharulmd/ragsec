@@ -25,6 +25,7 @@ from ragsec.core.embedder import BaseEmbedder, get_embedder
 from ragsec.core.llm import BaseLLM, MockLLM, OpenAICompatibleLLM
 from ragsec.core.models import Document, RAGResponse
 from ragsec.core.pipeline import RAGPipeline
+from ragsec.core.scoring import answer_matches
 from ragsec.defenses import (
     MonitoringLayer,
     RetrievalFilterLayer,
@@ -33,7 +34,7 @@ from ragsec.defenses import (
 )
 from ragsec.defenses.ingestion import sign_document
 from ragsec.eval.data import Dataset, QAExample, load_dataset
-from ragsec.eval.metrics import MetricSummary, QueryRecord, answer_matches, summarize
+from ragsec.eval.metrics import MetricSummary, QueryRecord, summarize
 
 DEFENSE_REGISTRY: dict[str, type[DefenseLayer]] = {
     SourceVerificationLayer.name: SourceVerificationLayer,
@@ -166,18 +167,23 @@ def sign_documents(documents: list[Document], key: bytes) -> list[Document]:
 
 
 def decoy_answers(qa: list[QAExample], rng: random.Random) -> dict[str, str]:
-    """Assign each question a plausible wrong answer taken from a different question."""
+    """Choose a different question's answer with no normalized substring overlap."""
     if len(qa) < 2:
-        return {ex.question: f"not {ex.answer}" for ex in qa}
-    order = list(range(len(qa)))
-    rng.shuffle(order)
+        raise ValueError("at least two QA examples are required to construct attack decoys")
     decoys: dict[str, str] = {}
-    for position, index in enumerate(order):
-        gold = qa[index].answer
-        candidate = qa[order[(position + 1) % len(order)]].answer
-        if answer_matches(candidate, gold) or answer_matches(gold, candidate):
-            candidate = qa[order[(position + 2) % len(order)]].answer
-        decoys[qa[index].question] = candidate
+    for index, example in enumerate(qa):
+        candidates = [
+            other.answer
+            for other_index, other in enumerate(qa)
+            if other_index != index
+            and not answer_matches(other.answer, example.answer)
+            and not answer_matches(example.answer, other.answer)
+        ]
+        if not candidates:
+            raise ValueError(
+                f"no non-overlapping decoy answer is available for question {example.question!r}"
+            )
+        decoys[example.question] = rng.choice(candidates)
     return decoys
 
 
@@ -331,7 +337,15 @@ class ExperimentRunner:
                 "clean": asdict(ingest_clean),
                 "poison": asdict(ingest_poison) if ingest_poison is not None else None,
             },
-            config=self.config.to_dict(),
+            config={
+                **self.config.to_dict(),
+                "resolved_embedder": {
+                    "backend": pipeline.embedder.name,
+                    "model_name": getattr(pipeline.embedder, "model_name", None),
+                    "revision": getattr(pipeline.embedder, "revision", None),
+                    "dimension": pipeline.embedder.dim,
+                },
+            },
         )
 
     @staticmethod

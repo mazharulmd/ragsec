@@ -85,8 +85,19 @@ def source_manifest(source: Path) -> dict[str, Any]:
         return {}
     raw = json.loads(manifest_path.read_text(encoding="utf-8"))
     environment = raw.get("environment", {})
+    identity = raw.get("experiment_identity", {})
     local = raw.get("local_real_model_confirmation", {})
     return {
+        "run_metadata": {
+            key: raw[key]
+            for key in ("created_utc", "command")
+            if key in raw
+        },
+        "experiment_identity": {
+            key: identity[key]
+            for key in ("code_fingerprint", "runtime_fingerprint")
+            if key in identity
+        },
         "environment": {
             key: environment[key]
             for key in (

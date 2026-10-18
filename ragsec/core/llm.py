@@ -165,9 +165,24 @@ class ResponseCache:
         )
 
     @staticmethod
-    def key(model: str, temperature: float, system: str | None, prompt: str) -> str:
+    def key(
+        model: str,
+        temperature: float,
+        system: str | None,
+        prompt: str,
+        *,
+        base_url: str = "",
+        max_tokens: int | None = None,
+    ) -> str:
         payload = json.dumps(
-            {"model": model, "temperature": temperature, "system": system, "prompt": prompt},
+            {
+                "base_url": base_url.rstrip("/"),
+                "model": model,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "system": system,
+                "prompt": prompt,
+            },
             sort_keys=True,
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -279,7 +294,14 @@ class OpenAICompatibleLLM(BaseLLM):
     def generate(self, prompt: str, *, system: str | None = None) -> str:
         key = None
         if self.cache is not None:
-            key = ResponseCache.key(self.model, self.temperature, system, prompt)
+            key = ResponseCache.key(
+                self.model,
+                self.temperature,
+                system,
+                prompt,
+                base_url=self.base_url,
+                max_tokens=self.max_tokens,
+            )
             cached = self.cache.get(key)
             if cached is not None:
                 return cached

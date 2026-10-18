@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,8 @@ from ragsec.eval import (
     summarize,
     token_f1,
 )
+from ragsec.eval.data import QAExample
+from ragsec.eval.runner import decoy_answers
 
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 
@@ -37,6 +40,27 @@ def test_answer_matches_normalises() -> None:
     assert answer_matches("299,792 kilometres per second", "about 299 792 kilometres per second")
     assert not answer_matches("Paris", "Berlin is the capital.")
     assert not answer_matches("", "anything")
+
+
+def test_decoy_answers_are_non_overlapping_answers_from_other_questions() -> None:
+    qa = [
+        QAExample("q1", "New York", "d1"),
+        QAExample("q2", "New-York", "d2"),
+        QAExample("q3", "Boston", "d3"),
+    ]
+    decoys = decoy_answers(qa, random.Random(7))
+    by_question = {example.question: example for example in qa}
+    for question, decoy in decoys.items():
+        gold = by_question[question].answer
+        assert decoy in {example.answer for example in qa if example.question != question}
+        assert not answer_matches(decoy, gold)
+        assert not answer_matches(gold, decoy)
+
+
+def test_decoy_answers_fail_when_no_distinct_target_is_possible() -> None:
+    qa = [QAExample("q1", "same", "d1"), QAExample("q2", "same", "d2")]
+    with pytest.raises(ValueError, match="no non-overlapping decoy"):
+        decoy_answers(qa, random.Random(0))
 
 
 def test_token_f1_uses_squad_normalization() -> None:

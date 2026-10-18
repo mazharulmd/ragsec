@@ -108,3 +108,17 @@ def test_context_flooding_suppresses_answer() -> None:
     response = pipeline.query(QUERY)
     assert all(rc.chunk.is_poison for rc in response.used)
     assert attack.is_success(correct, response.answer)
+
+
+def test_attack_success_uses_normalized_qa_matching() -> None:
+    attack = PoisonedRAGAttack()
+    normalized_target = AttackTarget(query=QUERY, target_answer="New York")
+    assert attack.is_success(normalized_target, "The answer is New-York.")
+    assert not attack.is_success(AttackTarget(query=QUERY, target_answer=""), "anything")
+
+
+def test_context_flooding_uses_the_same_normalized_qa_matching() -> None:
+    attack = ContextFloodingAttack()
+    correct = AttackTarget(query=QUERY, target_answer="New York")
+    assert not attack.is_success(correct, "New-York is the answer.")
+    assert attack.is_success(correct, "The answer is Boston.")

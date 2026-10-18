@@ -139,10 +139,12 @@ class RobustAggregationLayer(DefenseLayer):
     def generate(
         self, query: str, retrieved: list[RetrievedChunk], llm: BaseLLM
     ) -> str | None:
+        self.selected_chunk_ids = ()
+        self.last_isolated = []
+        self.last_groups = []
         if not retrieved:
             return None
         self.last_isolated = self._isolate(query, retrieved, llm)
-        self.selected_chunk_ids = ()
         groups = self._group(self.last_isolated)
         ranked = sorted(
             ((g.total_weight(self.redundancy_bonus), g) for g in groups),

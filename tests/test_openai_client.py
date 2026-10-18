@@ -86,6 +86,24 @@ def test_cache_key_separates_requests_that_could_differ(client, monkeypatch) -> 
     assert base != ResponseCache.key("m", 0.7, "sys", "prompt")
     assert base != ResponseCache.key("m", 0.0, "other system", "prompt")
     assert base != ResponseCache.key("m", 0.0, "sys", "other prompt")
+    assert base != ResponseCache.key("m", 0.0, "sys", "prompt", base_url="http://other")
+    assert base != ResponseCache.key("m", 0.0, "sys", "prompt", max_tokens=32)
+
+
+def test_client_cache_separates_endpoint_and_generation_limit(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    path = tmp_path / "cache.sqlite"
+    first = OpenAICompatibleLLM(
+        model="m", base_url="http://one/v1", max_tokens=32, cache_path=path
+    )
+    monkeypatch.setattr(first, "_request", lambda messages: "first endpoint")
+    first.generate("same prompt")
+
+    second = OpenAICompatibleLLM(
+        model="m", base_url="http://two/v1", max_tokens=64, cache_path=path
+    )
+    monkeypatch.setattr(second, "_request", lambda messages: "second endpoint")
+    assert second.generate("same prompt") == "second endpoint"
 
 
 def test_cache_survives_a_new_client_over_the_same_file(tmp_path, monkeypatch) -> None:

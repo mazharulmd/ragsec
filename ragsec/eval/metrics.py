@@ -10,18 +10,11 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from ragsec.core.scoring import answer_matches as answer_matches
+from ragsec.core.scoring import normalize_answer as normalize_answer
+
 _PUNCT_RE = re.compile(r"[^\w\s]")
 _ARTICLES_RE = re.compile(r"\b(a|an|the)\b")
-
-
-def normalize_answer(text: str) -> str:
-    return " ".join(_PUNCT_RE.sub(" ", text.lower()).split())
-
-
-def answer_matches(gold: str, answer: str) -> bool:
-    """Normalised substring match, the standard lenient QA criterion."""
-    gold_n = normalize_answer(gold)
-    return bool(gold_n) and gold_n in normalize_answer(answer)
 
 
 def token_f1(reference: str, prediction: str) -> float:

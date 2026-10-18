@@ -98,7 +98,16 @@ class RAGPipeline:
         filter_start = time.perf_counter()
         for layer in self.defenses:
             used = layer.on_retrieve(query, used)
-        used = used[: self.top_k]
+        after_defenses = used
+        surviving_chunk_ids = {rc.chunk.chunk_id for rc in after_defenses}
+        filtered_chunks = [
+            rc for rc in retrieved if rc.chunk.chunk_id not in surviving_chunk_ids
+        ]
+        used = after_defenses[: self.top_k]
+        used_chunk_ids = {rc.chunk.chunk_id for rc in used}
+        truncated_chunks = [
+            rc for rc in after_defenses if rc.chunk.chunk_id not in used_chunk_ids
+        ]
         filter_ms = (time.perf_counter() - filter_start) * 1000
 
         generate_start = time.perf_counter()
@@ -127,7 +136,12 @@ class RAGPipeline:
                 "num_candidates": n_candidates,
                 "num_retrieved": len(retrieved),
                 "num_used": len(used),
-                "num_filtered": len(retrieved) - len(used),
+                "num_filtered": len(filtered_chunks),
+                "num_truncated": len(truncated_chunks),
+                "filtered_chunk_ids": tuple(rc.chunk.chunk_id for rc in filtered_chunks),
+                "topk_truncated_chunk_ids": tuple(
+                    rc.chunk.chunk_id for rc in truncated_chunks
+                ),
                 "generator": generator,
                 "defenses": [layer.name for layer in self.defenses],
                 "selected_chunk_ids": (

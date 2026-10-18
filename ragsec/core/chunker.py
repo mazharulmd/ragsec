@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 from ragsec.core.models import Chunk, Document
 
 
@@ -32,7 +34,7 @@ class Chunker:
                     doc_id=document.doc_id,
                     chunk_id=f"{document.doc_id}:{position}",
                     position=position,
-                    provenance=document.provenance,
+                    provenance=deepcopy(document.provenance),
                     metadata=dict(document.metadata),
                 )
             )

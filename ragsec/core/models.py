@@ -112,5 +112,8 @@ class RAGResponse:
     @property
     def filtered(self) -> list[RetrievedChunk]:
         """Chunks that were retrieved but removed by a defense layer."""
+        if "filtered_chunk_ids" in self.metadata:
+            filtered_ids = set(self.metadata["filtered_chunk_ids"])
+            return [rc for rc in self.retrieved if rc.chunk.chunk_id in filtered_ids]
         used_ids = {rc.chunk.chunk_id for rc in self.used}
         return [rc for rc in self.retrieved if rc.chunk.chunk_id not in used_ids]

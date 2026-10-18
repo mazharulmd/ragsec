@@ -30,7 +30,8 @@ nothing here attacks a third-party system.
 Use them on systems you own or are authorised to test. If you deploy RAG in production, the
 practical implication is to authenticate a canonical envelope containing each document's
 identity, source identity, and text, then verify it at ingestion. This study uses HMAC, a
-symmetric message-authentication code; replay prevention and publisher authorization remain
+symmetric message-authentication code; trust scores are assigned by server-side source policy,
+not accepted from an uploaded document. Replay prevention and publisher authorization remain
 deployment requirements. Every content-based control measured here was evaded by rewriting.
 
 ## Architecture
@@ -103,9 +104,9 @@ sentence-transformers when available and falls back to hashing otherwise.
 
 ```bash
 ragsec suite --studies main evasion budget threshold backfill backfill_strict provenance generator \
-  --output-dir results/paper-pinned
-python scripts/export_paper_artifacts.py results/paper-pinned paper-submission/artifacts \
-  --local-model-dir results/paper-local-model
+  --output-dir results/paper-metric-aligned
+python scripts/export_paper_artifacts.py results/paper-metric-aligned paper-submission/artifacts \
+  --local-model-dir results/paper-local-model-metric-aligned
 ragsec figures --results-dir paper-submission/artifacts --output-dir paper-submission \
   --manuscript paper-submission/MainPaper.tex --strict
 ```
@@ -114,7 +115,7 @@ The committed records in `results/paper/` predate dataset revision tracking. New
 Hub revisions and a separate output directory, so they cannot be mixed with those archived
 records. The SQuAD and HotpotQA commit IDs are recorded in `ragsec/eval/suite.py` and copied
 into every new result row. Main-study per-question outcomes are written under
-`results/paper-pinned/main_query_records/`; the export step retains hashed cluster IDs, attack
+`results/paper-metric-aligned/main_query_records/`; the export step retains hashed cluster IDs, attack
 outcomes, and target token-F1 scores for the bootstrap while omitting question and answer text. The report writes its query
 intervals to `paper-submission/query_uncertainty.json`; they are conditional on the included
 experiment seeds.
@@ -140,8 +141,10 @@ Restrict the grid while iterating:
 ragsec suite --studies main evasion --datasets squad --seeds 0
 ```
 
-Results are appended as keyed JSON lines, so an interrupted run resumes without recomputing
-finished cells. `--no-resume` forces recomputation.
+Results are appended as keyed JSON lines. Resume identity includes the full cell configuration,
+implementation source fingerprint, runtime package fingerprint, and model/data revisions. A
+stale output directory is rejected to prevent mixing runs; use a fresh output directory or
+`--no-resume` to replace its study outputs.
 
 ### The real-model confirmation study
 
@@ -177,10 +180,10 @@ ragsec suite --studies confirmation --datasets squad --seeds 0   --base-url http
 Note that a ChatGPT Plus subscription does not include API access; an API key and its own
 billing come from the provider's developer platform.
 
-Completions are cached in `results/paper/llm-cache.sqlite`, keyed by model, temperature,
-system prompt and prompt. An interrupted run resumes without paying twice, and re-running to
-fix a reporting bug costs nothing. Rate limits and transient server errors are retried with
-backoff, honouring `Retry-After`.
+Completions are cached in `results/paper/llm-cache.sqlite`, keyed by endpoint, model, temperature,
+maximum tokens, system prompt and prompt. An interrupted run resumes without paying twice, and
+re-running to fix a reporting bug costs nothing when the request is unchanged. Rate limits and
+transient server errors are retried with backoff, honouring `Retry-After`.
 
 Two measurement caveats apply to real generators and not to the mock. A verbose model may
 mention both the true and the decoy answer in one response, which inflates accuracy and attack
@@ -225,7 +228,9 @@ paper-submission/figures/         generated PDF figures
 paper-submission/artifacts/       compact results used to rebuild the report
 ```
 
-`elsarticle` ships with TeX Live, MiKTeX and Overleaf, so nothing needs downloading:
+The Elsevier class, numeric bibliography style, and algorithm packages used by this manuscript
+are included in `paper-submission/` with their upstream copyright and license notices. A TeX
+distribution with the other standard LaTeX dependencies is still required:
 
 ```bash
 cd paper-submission && pdflatex MainPaper && bibtex MainPaper && pdflatex MainPaper && pdflatex MainPaper
@@ -260,7 +265,7 @@ retain target token-F1 scores as a graded sensitivity measure.
 
 ```
 results/paper/*.jsonl                     archived raw result records, predating revision tracking
-results/paper-pinned/                     pinned run outputs (local; raw query text included)
+results/paper-metric-aligned/             pinned run outputs (local; raw query text included)
 paper-submission/artifacts/*.jsonl        aggregate experiment results
 paper-submission/artifacts/query_outcomes.jsonl.gz
                                           hashed, per-query outcomes for cluster intervals
@@ -274,8 +279,8 @@ To regenerate the paper's tables, figures, and macros from the public artifact b
 --manuscript paper-submission/MainPaper.tex --strict`, then compile `MainPaper.tex` with the
 commands above. The dataset extra is used to regenerate
 corpus statistics; it fetches the pinned public snapshots if they are not cached. To export a new run, use
-`python scripts/export_paper_artifacts.py results/paper-pinned paper-submission/artifacts
---local-model-dir results/paper-local-model`. This export omits question text, reference answers,
+`python scripts/export_paper_artifacts.py results/paper-metric-aligned paper-submission/artifacts
+--local-model-dir results/paper-local-model-metric-aligned`. This export omits question text, reference answers,
 and model-generated answers while retaining the query-cluster outcomes needed for the reported
 bootstrap intervals. The full raw run remains local under `results/`.
 

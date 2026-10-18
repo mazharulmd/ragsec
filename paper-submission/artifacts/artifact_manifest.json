@@ -73,8 +73,16 @@
     "local_model/confirmation.jsonl",
     "local_model/summary.json"
   ],
+  "run_metadata": {
+    "created_utc": "2026-10-18T08:57:22Z",
+    "command": "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m ragsec.cli suite --studies main evasion budget threshold backfill backfill_strict provenance generator --output-dir results/paper-metric-aligned --no-resume"
+  },
+  "experiment_identity": {
+    "code_fingerprint": "738b861992f07a195f864d142d8f0a85af7ce438ea2f13b9bdb96f9faca91404",
+    "runtime_fingerprint": "d8f11504bc1ef51ec12b50eedc8bf2b3f1a4c5fab5601485eec9f552b235c8af"
+  },
   "environment": {
-    "python": "Python 3.12.14",
+    "python": "3.12.14",
     "packages": {
       "datasets": "5.1.0",
       "matplotlib": "3.11.2",
@@ -119,10 +127,10 @@
       }
     ],
     "interpretation_limits": [
-      "These quantized 0.5B and 1.2B local models are not substitutes for the planned GPT-4o or GPT-4o-mini provider runs.",
-      "The Llama cache includes 212 deterministic completions created before the first Llama server attempt hit the 8-GB OOM limit; that run resumed with reduced batch sizes. Temperature was zero and the same prompt/model cache keys were reused.",
-      "Do not interpret mean_latency_ms as comparative model latency: the shared completion cache makes cache-hit-heavy cells much faster in the recorded timing.",
-      "The confirmation output stores aggregate cell outcomes rather than per-question records, so the main-study question-cluster bootstrap does not apply to these rows."
+      "These quantized 0.5B and 1.2B local models are exploratory and do not replace a hosted GPT-4o/GPT-4o-mini study.",
+      "The confirmation output contains aggregate rows, not per-query records, so main-study question-cluster bootstrap intervals do not apply.",
+      "Latency is not interpreted because cache hits make it incomparable.",
+      "The sample uses 100 fixed SQuAD validation questions and one seed per model/configuration."
     ]
   }
 }

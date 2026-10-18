@@ -105,6 +105,31 @@ def test_source_verification_trust_registry_and_dedupe() -> None:
     assert reasons == {"untrusted source": 2, "duplicate content": 1}
 
 
+def test_ingestion_trust_comes_from_policy_and_isolated_from_input_mutation() -> None:
+    document = Document(
+        text="trusted evidence",
+        provenance=Provenance(source_id="internal-wiki", trust_score=1.0),
+    )
+    layer = SourceVerificationLayer(source_trust={"internal-wiki": 0.8})
+    accepted = layer.on_ingest([document])
+
+    assert document.provenance.trust_score == 1.0
+    assert accepted[0] is not document
+    assert accepted[0].provenance.trust_score == 0.8
+
+    document.provenance.trust_score = 0.0
+    assert accepted[0].provenance.trust_score == 0.8
+
+
+def test_unmapped_source_uses_server_default_trust() -> None:
+    document = Document(
+        text="unmapped evidence",
+        provenance=Provenance(source_id="upload", trust_score=1.0),
+    )
+    accepted = SourceVerificationLayer(default_trust=0.2).on_ingest([document])
+    assert accepted[0].provenance.trust_score == 0.2
+
+
 def test_source_verification_recomputes_hash_for_dedupe() -> None:
     layer = SourceVerificationLayer()
     original = Document(text="same content")
@@ -137,6 +162,14 @@ def test_source_verification_signatures() -> None:
     missing = Document(text="unsigned")
     assert layer.on_ingest([good, bad, missing]) == [good]
     assert {r.reason for r in layer.rejections} == {"invalid signature", "missing signature"}
+
+
+def test_source_verification_rejects_malformed_signature_without_raising() -> None:
+    layer = SourceVerificationLayer(hmac_key=b"secret-key", require_signature=True)
+    malformed = Document(text="signed")
+    malformed.provenance.signature = "é" * 64
+    assert layer.on_ingest([malformed]) == []
+    assert layer.rejections[0].reason == "invalid signature"
 
 
 def test_source_verification_requires_key_for_required_signatures() -> None:

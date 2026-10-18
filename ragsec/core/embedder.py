@@ -11,6 +11,7 @@ import logging
 import os
 import re
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import numpy as np
 
@@ -18,20 +19,23 @@ logger = logging.getLogger(__name__)
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 DEFAULT_ST_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_ST_MODEL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 
-#: ``{model_name: {text: vector}}``. Shared across embedder instances so that a sweep does not
-#: re-encode the same corpus for every experiment cell.
-_EMBED_CACHE: dict[str, dict[str, np.ndarray]] = {}
-_MODEL_CACHE: dict[tuple[str, str | None], object] = {}
+#: ``{(model_name, revision): {text: vector}}``. Shared across experiment cells without mixing
+#: embeddings produced by different immutable model revisions.
+_EMBED_CACHE: dict[tuple[str, str | None], dict[str, np.ndarray]] = {}
+_MODEL_CACHE: dict[tuple[str, str | None, str | None], object] = {}
 
 
-def _load_st_model(model_name: str, device: str | None):  # noqa: ANN202 - third-party type
+def _load_st_model(
+    model_name: str, revision: str | None, device: str | None
+):  # noqa: ANN202 - third-party type
     """Load (and memoise) a sentence-transformers model; loading dominates short runs."""
-    key = (model_name, device)
+    key = (model_name, revision, device)
     if key not in _MODEL_CACHE:
         from sentence_transformers import SentenceTransformer
 
-        _MODEL_CACHE[key] = SentenceTransformer(model_name, device=device)
+        _MODEL_CACHE[key] = SentenceTransformer(model_name, revision=revision, device=device)
     return _MODEL_CACHE[key]
 
 
@@ -96,15 +100,24 @@ class SentenceTransformerEmbedder(BaseEmbedder):
     def __init__(
         self,
         model_name: str = DEFAULT_ST_MODEL,
+        revision: str | None = None,
         device: str | None = None,
         cache: bool = True,
         batch_size: int = 64,
     ) -> None:
 
+        if revision is None and model_name == DEFAULT_ST_MODEL:
+            revision = DEFAULT_ST_MODEL_REVISION
+        elif revision is None and not Path(model_name).exists():
+            raise ValueError(
+                "revision is required for a SentenceTransformers Hub model; "
+                "pin an immutable commit or pass a local model path"
+            )
         self.model_name = model_name
+        self.revision = revision
         self.cache = cache
         self.batch_size = batch_size
-        self._model = _load_st_model(model_name, device)
+        self._model = _load_st_model(model_name, revision, device)
         # sentence-transformers renamed this accessor; support both so the framework runs
         # against the installed version without emitting a deprecation warning per process.
         dimension = getattr(self._model, "get_embedding_dimension", None) or (
@@ -119,7 +132,7 @@ class SentenceTransformerEmbedder(BaseEmbedder):
             return self._encode(texts)
         # Sweeps rebuild the pipeline once per (configuration, attack, seed) cell over the same
         # corpus, so a process-level cache removes almost all repeated encoder work.
-        store = _EMBED_CACHE.setdefault(self.model_name, {})
+        store = _EMBED_CACHE.setdefault((self.model_name, self.revision), {})
         missing = [t for t in dict.fromkeys(texts) if t not in store]
         if missing:
             for text, vector in zip(missing, self._encode(missing), strict=True):

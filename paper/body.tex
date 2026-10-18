@@ -53,8 +53,8 @@ defense. Against the static attacks the layered architecture behaves as the lite
 predict: attack success falls from near unity to approximately zero, at a small utility cost.
 Against the adaptive adversary the same stack fails almost completely: the retrieval
 filter's true-positive rate falls to zero, and attack success is statistically
-indistinguishable from the undefended pipeline. Binding ingestion to an unforgeable signature, rather than to a
-claimed source name and trust score, restores the defense. A leave-one-out ablation shows the
+indistinguishable from the undefended pipeline. Requiring a valid HMAC at ingestion, rather
+than trusting an unsigned source identifier, restores the defense. A leave-one-out ablation shows the
 adaptive attack needs exactly three of its six techniques, and that the two content-level
 detectors it must evade are each defeated by a single, cheap rewriting choice.
 
@@ -177,10 +177,11 @@ Section~\ref{sec:results} reports what happens.
 \subsection{System Model and Notation}
 
 Let $\mathcal{D} = \{d_1, \dots, d_n\}$ be the document collection. Each document $d$ carries
-provenance $\pi(d) = (s, \sigma, \tau)$, where $s$ is the identifier of the source that
-submitted it, $\sigma$ an optional signature over the canonical envelope
-$\mathsf{env}(d) = (v, \mathrm{id}(d), s, \mathrm{text}(d))$, and $\tau \in [0,1]$ a trust score associated
-with $s$. Documents are split into chunks and embedded by
+provenance $\pi(d) = (s, \sigma, \tau)$, where $s$ is the caller-supplied source identifier,
+$\sigma$ an optional HMAC tag over the canonical envelope
+$\mathsf{env}(d) = (v, \mathrm{id}(d), s, \mathrm{text}(d))$, and $\tau \in [0,1]$ is
+assigned by server policy as $T[s]$ or a default score. Any trust score supplied with the
+document is ignored. Documents are split into chunks and embedded by
 $E : \Sigma^{*} \rightarrow \mathbb{R}^{h}$ with unit-norm output, so that the inner product
 $\langle E(q), E(c) \rangle$ is the cosine similarity between a query $q$ and a chunk $c$. The
 retriever returns the $mk$ highest-scoring chunks, where $k$ is the number of passages the
@@ -208,6 +209,8 @@ target question; we sweep $b$ explicitly.
 For these benchmark experiments, we operationalise target knowledge by giving the adversary
 the full QA question list and targeting every listed question. This is a batch-poisoning
 scenario with complete benchmark access, not a model of discovering unknown production queries.
+For substitution attacks, each target is assigned an answer from a different benchmark question;
+assignments with normalized substring overlap with the target's gold answer are excluded.
 
 Two adversarial goals are distinguished. Under \emph{substitution}, the adversary chooses a
 target answer $a^{*}$ and succeeds when $a^{*}$ appears in the system's response. Under
@@ -265,8 +268,9 @@ the generator sees.\label{fig:architecture}}
 \label{sec:l1}
 
 Layer~1 decides what may enter the index. It applies, in order: a source allowlist; a minimum
-trust threshold $\theta_{\mathrm{trust}}$ on the trust score associated with the claimed
-source; HMAC-SHA256 signature verification~\citep{krawczyk1997hmac} recomputed over a
+trust threshold $\theta_{\mathrm{trust}}$ on a score assigned by server-side source policy
+(with a configured default for unmapped identifiers); HMAC-SHA256 signature verification
+~\citep{krawczyk1997hmac} recomputed over a
 versioned canonical encoding of the document identifier, source identifier, and text rather
 than trusted from caller-supplied metadata; content-hash deduplication; and a per-source
 document quota that bounds bulk insertion. Requiring signatures without a
@@ -274,26 +278,32 @@ runtime verification key is rejected at construction time rather than silently d
 no-op. In this study, the harness generates a fresh 256-bit key for each runner, signs only the
 legitimate corpus, and keeps the key in memory. The attack interface receives no signing
 capability, and the key is absent from source, configuration files, and result records.
+In the experiments the server assigns 0.8 to the legitimate dataset-source identifier and
+uses 0.5 for unmapped identifiers; the trust threshold and allowlist vary by study.
 
 Algorithm~\ref{alg:l1} gives the order of checks. The distinction that turns out to matter
-experimentally is between the \emph{claimed} and the \emph{provable} parts of provenance. A source identifier and a trust score are attributes an
-uploader asserts; a signature is one they must be able to produce. Allowlists and trust
-thresholds constrain only the first kind.
+experimentally is between the \emph{claimed} and the \emph{provable} parts of provenance. The
+source identifier remains a caller-supplied claim; the incoming trust score is ignored and
+replaced with the server's configured score for that identifier (or its default). Allowlists
+and trust policy constrain how the claimed identifier is treated, but do not authenticate the
+publisher. A signature requires access to the shared secret or an authorized signing service.
 
 \begin{algorithm}[H]
 \caption{Layer 1: ingestion-time source verification}
 \label{alg:l1}
 \begin{algorithmic}[1]
-\Require documents $D$; allowlist $S$; trust map $T$; threshold $\theta_{\mathrm{trust}}$;
+\Require documents $D$; allowlist $S$; trust map $T$; default score $\tau_0$;
+threshold $\theta_{\mathrm{trust}}$;
 key $\kappa$; quota $Q$; seen-hash set $H$; per-source counts $N$
 \Ensure accepted documents $A$
 \State $A \gets \emptyset$
 \ForAll{$d \in D$}
-  \State $s \gets \mathrm{source}(d)$;\quad $\tau \gets T[s]$ \Comment{server-side trust, not the uploader's claim}
+  \State $s \gets \mathrm{source}(d)$; $\tau \gets T[s]$; if $s \notin T$, set $\tau \gets \tau_0$
+  \Comment{server-side trust; ignore caller-supplied score}
   \If{$S \neq \bot$ \textbf{and} $s \notin S$} \State \textbf{continue} \Comment{reject: source not allowlisted} \EndIf
   \If{$\tau < \theta_{\mathrm{trust}}$} \State \textbf{continue} \Comment{reject: untrusted source} \EndIf
   \If{$\kappa \neq \bot$}
-     \If{$\mathrm{sig}(d) = \bot$ \textbf{or} $\mathrm{sig}(d) \neq \mathrm{HMAC}_\kappa(\mathrm{text}(d))$}
+     \If{$\mathrm{sig}(d) = \bot$ \textbf{or} $\mathrm{sig}(d) \neq \mathrm{HMAC}_\kappa(\mathsf{env}(d))$}
         \State \textbf{continue} \Comment{reject: missing or forged signature}
      \EndIf
   \EndIf
@@ -487,9 +497,10 @@ query-bigram overlap, and so to stay clear of the naturalness filter.
 query below the near-duplicate threshold and to keep the passage near the corpus centroid, so
 that it is not an embedding-space outlier.
 \item[E5 Provenance spoofing.] Documents are uploaded claiming the source identifier the
-deployment already trusts, with a correspondingly high trust score. This models a single
-compromised connector, a stolen ingestion credential, or an insider, and it satisfies both an
-allowlist and a trust threshold at zero cost, because both are assertions rather than proofs.
+deployment already trusts and may carry an arbitrary high trust score. The server ignores the
+submitted score and applies its configured policy for the claimed identifier. This models a
+single compromised connector, stolen ingestion credential, or insider: without a valid MAC,
+the identifier itself remains spoofable and can satisfy an allowlist and trust threshold.
 \item[E6 Corroboration.] Each of the adversary's $b$ documents is textually distinct and
 carries a distinct document identifier, so content-hash deduplication does not collapse them
 and the aggregator's redundancy bonus (Equation~(\ref{eq:weight})) counts them as independent
@@ -788,9 +799,8 @@ actually stop it. Against a static adversary the ladder behaves as intuition sug
 trust threshold takes success from \provOpenStatic{} to \provTrustonlyStatic{}, and an
 allowlist to \provAllowlistStatic{}. Against the adaptive adversary the same rungs do nothing
 at all (\provOpenAdaptive{}, \provTrustonlyAdaptive{} and \provAllowlistAdaptive{}
-respectively), because the source identifier and the trust score are attributes the uploader
-asserts, and the
-adversary asserts the ones the deployment already accepts.
+respectively), because the adversary can claim a source identifier accepted by the deployment;
+the server then assigns the mapped score and ignores the score supplied with the document.
 
 The per-source quota is the one intermediate rung that does anything, and it repays a careful
 reading. We set it at $1.5$ times the size of the legitimate corpus, meaning that the
@@ -1036,10 +1046,11 @@ layer a more precise role than ``defense in depth'' usually implies, and one tha
 suppression correction of Section~\ref{sec:res:suppression} is needed to see clearly.
 
 Layer~1 is the only \emph{preventive} control in the stack that an adaptive adversary cannot
-argue with, but only in its cryptographic form. Its allowlist and trust threshold check
-assertions, and an adversary who can write to the corpus can assert anything. This distinction
-is invisible against static attacks, which conveniently upload from an untrusted source name,
-and it is the whole result against an adaptive one.
+argue with, but only in its cryptographic form. Its allowlist and trust policy apply to the
+caller-supplied source identifier, which an adversary who can write to the corpus can spoof.
+The incoming trust score itself is ignored. This distinction is invisible against static
+attacks, which conveniently upload from an untrusted source name, and it is the whole result
+against an adaptive one.
 
 Layer~2 is a \emph{detective} control that has been widely deployed as though it were
 preventive. It is genuinely effective against the published attack constructions, and it
@@ -1192,7 +1203,7 @@ manufactured corroboration; and attack success is statistically indistinguishabl
 undefended pipeline. A leave-one-out ablation shows the adversary needs exactly three of its six
 techniques, two of them free rewriting choices.
 
-Requiring an unforgeable signature at ingestion restored the defense completely, at no cost to
+Requiring a valid HMAC at ingestion restored the defense completely, at no cost to
 clean accuracy, and was the only control in the study that did. We take this as the practical
 conclusion: content-based heuristics belong in a RAG security architecture as detection and as
 incident evidence, but the preventive control has to be verifiable provenance. The security

@@ -7,10 +7,10 @@
 \toprule
 \textbf{Ingestion control} & \textbf{\shortstack{SQuAD\\static}} & \textbf{\shortstack{SQuAD\\adaptive}} & \textbf{\shortstack{HotpotQA\\static}} & \textbf{\shortstack{HotpotQA\\adaptive}} & \textbf{\shortstack{Toy corpus\\static}} & \textbf{\shortstack{Toy corpus\\adaptive}} & \textbf{Rejected docs}\\
 \midrule
-No ingestion control & 0.99 & 0.82 & 0.96 & 0.96 & 0.66 & 0.41 & 0\\
-Trust threshold ($\theta_{\mathrm{trust}}=0.6$) & 0.01 & 0.82 & 0.00 & 0.96 & 0.00 & 0.41 & 0\\
-Source allowlist $+$ trust threshold & 0.01 & 0.82 & 0.00 & 0.96 & 0.00 & 0.41 & 0\\
-Allowlist $+$ per-source quota & 0.01 & 0.15 & 0.00 & 0.96 & 0.00 & 0.00 & 750\\
+No ingestion control & 0.99 & 0.81 & 0.96 & 0.95 & 0.63 & 0.46 & 0\\
+Trust threshold ($\theta_{\mathrm{trust}}=0.6$) & 0.01 & 0.81 & 0.00 & 0.95 & 0.00 & 0.46 & 0\\
+Source allowlist $+$ trust threshold & 0.01 & 0.81 & 0.00 & 0.95 & 0.00 & 0.46 & 0\\
+Allowlist $+$ per-source quota & 0.01 & 0.14 & 0.00 & 0.95 & 0.00 & 0.00 & 750\\
 HMAC-authenticated ingestion (allowlist $+$ MAC tag) & 0.01 & 0.01 & 0.00 & 0.00 & 0.00 & 0.00 & 900\\
 \bottomrule
 \end{tabularx}

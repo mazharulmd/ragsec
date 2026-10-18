@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from ragsec.core.llm import content_tokens
 from ragsec.core.models import Document, Provenance
+from ragsec.core.scoring import answer_matches
 
 
 @dataclass(frozen=True)
@@ -73,7 +74,7 @@ class Attack(ABC):
 
     def is_success(self, target: AttackTarget, answer: str) -> bool:
         """Whether ``answer`` indicates the attack achieved its goal."""
-        return target.target_answer.lower() in answer.lower()
+        return answer_matches(target.target_answer, answer)
 
     def bind_corpus(self, source_id: str) -> None:
         """Tell the attack which source the legitimate corpus is published under.

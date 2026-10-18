@@ -396,10 +396,11 @@ superiority over those systems on their own benchmarks.
 \subsection{System Model and Notation}
 
 Let $\mathcal{D} = \{d_1, \dots, d_n\}$ be the document collection. Each document $d$ carries
-provenance $\pi(d) = (s, \sigma, \omega)$, where $s$ is the identifier of the source that
-submitted it, $\sigma$ an optional HMAC tag over the canonical envelope
-$\mathsf{env}(d) = (v, \mathrm{id}(d), s, \mathrm{text}(d))$, and $\omega \in [0,1]$ a trust score
-associated with $s$. Documents are split into chunks and embedded by
+provenance $\pi(d) = (s, \sigma, \omega)$, where $s$ is the caller-supplied source identifier,
+$\sigma$ an optional HMAC tag over the canonical envelope
+$\mathsf{env}(d) = (v, \mathrm{id}(d), s, \mathrm{text}(d))$, and $\omega \in [0,1]$ is
+assigned by server policy as $T[s]$ or a default score. Any trust score supplied with the
+document is ignored. Documents are split into chunks and embedded by
 $E : \Sigma^{*} \rightarrow \mathbb{R}^{h}$ with unit-norm output, so that the inner product
 $\langle E(q), E(c) \rangle$ is the cosine similarity between a query $q$ and a chunk $c$. The
 retriever returns the $mk$ highest-scoring chunks, where $k$ is the number of passages the
@@ -427,6 +428,8 @@ target question; we sweep $b$ explicitly.
 For these benchmark experiments, we operationalise target knowledge by giving the adversary
 the full QA question list and targeting every listed question. This is a batch-poisoning
 scenario with complete benchmark access, not a model of discovering unknown production queries.
+For substitution attacks, each target is assigned an answer from a different benchmark question;
+assignments with normalized substring overlap with the target's gold answer are excluded.
 
 Two adversarial goals are distinguished. Under \emph{substitution}, the adversary chooses a
 target answer $a^{*}$ and succeeds when $a^{*}$ appears in the system's response. Under
@@ -485,8 +488,9 @@ possibly manipulated answer.
 \label{sec:l1}
 
 Layer~1 decides what may enter the index. It applies, in order: a source allowlist; a minimum
-trust threshold $\theta_{\mathrm{trust}}$ on the trust score associated with the claimed
-source; HMAC-SHA256 message-authentication-code (MAC) verification~\citep{krawczyk1997hmac}
+trust threshold $\theta_{\mathrm{trust}}$ on a score assigned by server-side source policy
+(with a configured default for unmapped identifiers); HMAC-SHA256 message-authentication-code
+(MAC) verification~\citep{krawczyk1997hmac}
 recomputed over a versioned canonical encoding of the document identifier, source identifier,
 and text rather than trusted from caller-supplied metadata; content-hash deduplication; and a per-source
 document quota that bounds bulk insertion. Requiring MAC tags without a
@@ -495,24 +499,29 @@ no-op. HMAC is a symmetric MAC, not a public-key digital signature: the trusted 
 verifier share the secret. The harness generates a fresh 256-bit key for each runner, tags only
 the legitimate corpus, and keeps the key in memory. The attack interface cannot access the key
 or request tags from the authorized publisher, and the key is absent from source, configuration
-files, and result records.
+files, and result records. In the experiments the server assigns 0.8 to the legitimate
+dataset-source identifier and uses 0.5 for unmapped identifiers; the trust threshold and
+allowlist are varied as specified by each study.
 
-Algorithm~\ref{alg:l1} gives the order of checks. The distinction that turns out to matter
-experimentally is between the \emph{claimed} and the \emph{authenticated} parts of provenance.
-A source identifier and a trust score are attributes an uploader asserts; a valid MAC tag
-requires access to the shared secret or to an authorized tag-generation service. Allowlists and trust
-thresholds constrain only the first kind.
+Algorithm~\ref{alg:l1} gives the order of checks. The source identifier remains a caller-supplied
+claim; the incoming trust score is ignored and replaced with the server's configured score for
+that identifier (or its default). Allowlists and trust policy constrain how the claimed
+identifier is treated, but do not authenticate the publisher. A valid MAC tag over the document
+identifier, source identifier, and text requires access to the shared secret or an authorized
+tag-generation service.
 
 \begin{algorithm}[H]
 \caption{Layer 1: ingestion-time source verification}
 \label{alg:l1}
 \begin{algorithmic}[1]
-\Require documents $D$; allowlist $S$; trust map $T$; threshold $\theta_{\mathrm{trust}}$;
+\Require documents $D$; allowlist $S$; trust map $T$; default score $\omega_0$;
+threshold $\theta_{\mathrm{trust}}$;
 key $\kappa$; quota $Q$; seen-hash set $H$; per-source counts $N$
 \Ensure accepted documents $A$
 \State $A \gets \emptyset$
 \ForAll{$d \in D$}
-  \State $s \gets \mathrm{source}(d)$;\quad $\omega \gets T[s]$ \Comment{server-side trust, not the uploader's claim}
+  \State $s \gets \mathrm{source}(d)$; $\omega \gets T[s]$; if $s \notin T$, set $\omega \gets \omega_0$
+  \Comment{server-side trust; ignore caller-supplied score}
   \If{$S \neq \bot$ \textbf{and} $s \notin S$} \State \textbf{continue} \Comment{reject: source not allowlisted} \EndIf
   \If{$\omega < \theta_{\mathrm{trust}}$} \State \textbf{continue} \Comment{reject: untrusted source} \EndIf
   \If{$\kappa \neq \bot$}
@@ -709,8 +718,10 @@ query-bigram overlap, and so to stay clear of the naturalness filter.
 \item[E4 Similarity dilution.] The padding budget is also used to push cosine similarity to the
 query below the near-duplicate threshold and to keep the passage near the corpus centroid, so
 that it is not an embedding-space outlier.
-\item[E5 Spoofing.] The attacker claims a trusted source and high trust score. This models a
-compromised connector, stolen credential, or insider.
+\item[E5 Spoofing.] The attacker labels a document as coming from a trusted source and may
+attach an arbitrary high trust score. The server ignores that score and applies its policy for
+the claimed source identifier; without a valid MAC, the identifier itself remains spoofable.
+This models a compromised connector, stolen credential, or insider.
 \item[E6 ID diversification.] The $b$ poisons use unique text and IDs, so content-hash
 deduplication retains them. The aggregator counts the IDs as support (Equation~(\ref{eq:weight})),
 but IDs do not prove source independence.
@@ -790,10 +801,12 @@ quantized to GGUF Q4\_K\_M and served locally through an
 OpenAI-compatible API. Each model was evaluated on 100 questions, one seed, four defense
 configurations (none, L2, full, and full with HMAC-authenticated ingestion), and three attacks
 (PoisonedRAG, prompt injection, and adaptive poisoning). Decoding used temperature 0 and a
-128-token maximum. Completions were cached and reused across configurations. The Llama run
-resumed after an initial batch-size out-of-memory failure; deterministic cached completions
-were retained. The artifact manifest records the model weight hashes, quantization, local
-inference-server version, and decoding settings. Because confirmation records are aggregate-only and cache-heavy, we do not use
+128-token maximum. Both servers used two CPU threads, a 4096-token context, and logical/physical
+batch sizes of 512/128. Completions were cached and reused across configurations; cache identity
+includes the endpoint, model, temperature, token limit, system message, and prompt. The artifact
+manifest records model weight hashes, quantization, local inference-server version, and decoding
+settings. No hosted model endpoint was used. Because confirmation records are aggregate-only and
+cache-heavy, we do not use
 them for query-cluster inference or comparative latency claims. The measured timing is
 cache-dependent.
 
@@ -1024,9 +1037,8 @@ actually stop it. Against a static adversary the ladder behaves as intuition sug
 trust threshold takes success from \provOpenStatic{} to \provTrustonlyStatic{}, and an
 allowlist to \provAllowlistStatic{}. Against the adaptive adversary the same rungs do nothing
 at all (\provOpenAdaptive{}, \provTrustonlyAdaptive{} and \provAllowlistAdaptive{}
-respectively), because the source identifier and the trust score are attributes the uploader
-asserts, and the
-adversary asserts the ones the deployment already accepts.
+respectively), because the adversary can claim a source identifier accepted by the deployment;
+the server then assigns the mapped score and ignores the score supplied with the document.
 
 The per-source quota is the one intermediate rung that does anything, and it repays a careful
 reading. We set it at $1.5$ times the size of the legitimate corpus, meaning that the
@@ -1258,8 +1270,9 @@ confirmation did not evaluate hosted commercial models.
 \subsection{Interpretation of the Components}
 
 The results support different, limited readings of the four controls. In this threat model,
-allowlists and trust scores alone do not authenticate a source because an uploader can assert
-those metadata values. The HMAC condition rejects documents whose tag was not generated by the
+allowlists and trust policy alone do not authenticate a source because the source identifier is
+caller-supplied, even though the server assigns the score and ignores any incoming score. The
+HMAC condition rejects documents whose tag was not generated by the
 trusted publisher, provided that the key and tag-generation path remain protected. This is a
 trust-boundary result for the tested pipeline, not a general guarantee against compromised or
 malicious authorized publishers.
