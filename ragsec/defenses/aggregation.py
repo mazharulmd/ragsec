@@ -3,9 +3,9 @@
 Instead of stuffing all retrieved passages into one prompt, each passage is queried in
 isolation so that a single poisoned passage cannot dominate the generation. Isolated answers
 are grouped into candidate answers and voted on with weights derived from source trust,
-answer/query relevance and whether the passage was flagged upstream. Answers backed by several
-independent documents receive a redundancy bonus. If no candidate wins by a margin the layer
-abstains, which is the safe failure mode for a poisoning attack.
+passage/query lexical coverage and whether the passage was flagged upstream. Answers backed by
+several independent documents receive a redundancy bonus. If no candidate wins by a margin the
+layer abstains, which is the safe failure mode for a poisoning attack.
 
 Inspired by RobustRAG (Xiang et al., 2024) with the addition of provenance-aware weighting.
 """
@@ -96,8 +96,8 @@ class RobustAggregationLayer(DefenseLayer):
         self, query: str, retrieved: list[RetrievedChunk], llm: BaseLLM
     ) -> list[IsolatedAnswer]:
         q_tokens = content_tokens(query)
-        # Normalise relevance by the query terms that any retrieved passage can actually
-        # address; terms nobody mentions (typos, trigger tokens) should not penalise everyone.
+        # Normalise passage relevance by query terms present in at least one retrieved passage;
+        # terms nobody retrieved (typos, trigger tokens) should not penalise every candidate.
         covered = q_tokens & set().union(*(content_tokens(rc.chunk.text) for rc in retrieved))
         denominator = covered or q_tokens
         isolated: list[IsolatedAnswer] = []
@@ -106,7 +106,14 @@ class RobustAggregationLayer(DefenseLayer):
             if self.is_abstention(answer):
                 continue
             tokens = content_tokens(answer)
-            relevance = len(tokens & denominator) / len(denominator) if denominator else 1.0
+            # Score the retrieved evidence, not the generated answer. Terse correct answers
+            # ("1953", "Paris") often share no words with their question and would otherwise
+            # be driven to the abstention floor despite coming from a relevant passage.
+            relevance = (
+                len(q_tokens & content_tokens(rc.chunk.text)) / len(denominator)
+                if denominator
+                else 1.0
+            )
             weight = rc.chunk.provenance.trust_score * (
                 max(relevance, self.min_relevance) ** self.relevance_power
             )

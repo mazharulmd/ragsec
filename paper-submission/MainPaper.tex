@@ -602,9 +602,10 @@ W(g) \;=\; \Big(\textstyle\sum_{j \in g} \omega_j \cdot \max(\rho_j, \rho_{\min}
 \label{eq:weight}
 \end{equation}
 where $\omega_j$ is the source trust of the passage supporting answer $j$, $\rho_j$ the fraction
-of addressable query terms the answer covers, $\gamma = 2$ sharpens the preference for
+of addressable query terms present in that passage, $\gamma = 2$ sharpens the preference for
 on-topic answers, $\phi_j$ is a penalty applied when Layer~2 flagged the passage, and $\beta$
 is a redundancy bonus rewarding groups whose passages carry distinct document identifiers.
+Addressable query terms are content tokens appearing in at least one retrieved passage.
 Those identifiers do not establish independent publishers or independent evidence. The layer
 returns the highest-weighted group's representative answer only if that group both clears a
 minimum weight and exceeds the runner-up by a margin $\mu$; otherwise it abstains.
@@ -623,7 +624,7 @@ what happens when the adversary supplies the matching documents.
 \ForAll{$c \in C$}
   \State $a_c \gets G(q, \{c\})$ \Comment{one passage at a time: no cross-passage influence}
   \If{$a_c$ is an abstention} \State \textbf{continue} \EndIf
-  \State $\rho_c \gets$ fraction of addressable query terms covered by $a_c$
+  \State $\rho_c \gets$ fraction of addressable query terms present in passage $c$
   \State $w_c \gets \omega_c \cdot \max(\rho_c, \rho_{\min})^{\gamma} \cdot \phi_c$
   \State $I \gets I \cup \{(a_c, w_c, \mathrm{doc}(c))\}$
 \EndFor

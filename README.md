@@ -75,7 +75,7 @@ ragsec attack --name adaptive_poison --query "What is the capital of France?" \
 |---|---|---|
 | L1 | `SourceVerificationLayer` | source allowlist, per-source trust with `min_trust`, HMAC-SHA256 message authentication, content-hash dedupe, per-source quotas |
 | L2 | `RetrievalFilterLayer` | `InstructionPatternFilter` (NFKC + invisible-char stripping), `QueryEchoFilter`, `SimilarityOutlierFilter`, `NaturalnessFilter` |
-| L3 | `RobustAggregationLayer` | per-passage isolated generation, trust × relevance² weighted voting, cross-source redundancy bonus, abstain on low margin |
+| L3 | `RobustAggregationLayer` | per-passage isolated generation, trust × passage/query coverage² weighted voting, cross-document redundancy bonus, abstain on low margin |
 | L4 | `MonitoringLayer` | Jensen–Shannon drift between query windows, benchmark ranking-shift alerts, canary queries |
 
 Each L2 filter reports a **calibrated severity** — its raw statistic divided by its own decision

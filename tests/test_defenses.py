@@ -251,6 +251,35 @@ def test_robust_aggregation_preserves_clean_answer() -> None:
     assert response.metadata["generator"] == "robust_aggregation"
 
 
+def test_robust_aggregation_scores_retrieved_passage_not_answer_word_overlap() -> None:
+    from ragsec.core.llm import BaseLLM
+
+    class ConciseAnswerLLM(BaseLLM):
+        name = "concise-test"
+
+        def generate(self, prompt: str, *, system: str | None = None) -> str:
+            return "1953"
+
+    pipeline = RAGPipeline.from_defaults(
+        embedder=HashingEmbedder(dim=512),
+        llm=ConciseAnswerLLM(),
+        top_k=1,
+        defenses=[RobustAggregationLayer()],
+    )
+    pipeline.ingest(
+        [
+            Document(
+                text="The city was founded in 1953.",
+                provenance=Provenance(source_id="encyclopedia", trust_score=0.5),
+            )
+        ]
+    )
+
+    response = pipeline.query("In what year was the city founded?")
+
+    assert response.answer == "1953"
+
+
 def test_robust_aggregation_blocks_minority_poison() -> None:
     layer = RobustAggregationLayer()
     pipeline = build([layer])
@@ -262,13 +291,13 @@ def test_robust_aggregation_blocks_minority_poison() -> None:
     assert response.answer == ABSTAIN_ANSWER
 
 
-def test_robust_aggregation_downweights_injection_payloads() -> None:
+def test_robust_aggregation_abstains_on_conflicting_injection_answer() -> None:
     pipeline = build([RobustAggregationLayer()])
     attack = PromptInjectionAttack()
     pipeline.ingest(attack.generate_poison([TARGET], 1))
     response = pipeline.query(QUERY)
     assert not attack.is_success(TARGET, response.answer)
-    assert "Paris" in response.answer
+    assert response.answer == ABSTAIN_ANSWER
 
 
 # Layer 4
