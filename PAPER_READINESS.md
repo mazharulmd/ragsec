@@ -1,86 +1,97 @@
-# Paper readiness review
+# Manuscript readiness and reviewer assessment
 
-Reviewed against the current experiment code, committed result files and the authoritative
-Elsevier manuscript on 17 October 2026. This is a pre-writing assessment; the manuscript's
-claims should be revisited after the evidence gaps below are addressed.
+Reviewed on 18 October 2026 against the manuscript, experiment implementation, pinned results,
+and recent RAG-security literature. This is a revision assessment, not a prediction of editorial
+outcome.
 
-Since the initial review, I completed the missing toy-corpus cells in `backfill_strict`, bringing
-the offline result set to 2,322 rows, regenerated the tables and figures, and resumed the full
-offline suite successfully. I also corrected the manuscript's dataset-size statement and made
-the confidence-interval and signing-key assumptions explicit. The Elsevier manuscript now
-builds in a temporary TeX environment; a real-model run remains blocked because no provider key
-or local model endpoint is configured. The hard-coded public HMAC key has since been removed;
-the signed-ingestion harness now creates a fresh key in memory for each runner and does not write
-it to configuration or result records.
+## Current assessment
 
-## What is already in place
+The manuscript is more accurate and reproducible than the earlier draft, but the scientific
+contribution still looks incremental for a competitive Q1 security journal. The paper now frames
+itself as a controlled component-level diagnosis, rather than a new defense or the first adaptive
+RAG evaluation. The remaining novelty problem is substantive: the adaptive threat, layered
+defenses, and poisoning benchmarks overlap with published and recent work, while this study does
+not reproduce those systems head to head or introduce a new defense, benchmark, or threat model.
 
-- The repository contains eight offline experiment result files with 2,322 JSONL records, plus
-  generated tables and figures. The suite is deterministic and now pins its external datasets,
-  but the archived records were produced before revision metadata was captured.
-- The experiment suite includes a real-model confirmation study in code. It compares two
-  models, four defense configurations and three attacks on a reduced SQuAD sample.
-- The manuscript has a limitations section that identifies the mock generator, small corpora,
-  one adaptive attacker, implementation coupling and excluded model/network latency.
-- The main result is appropriately qualified in places: adaptive poisoning defeats the tested
-  content filters, while the signature result depends on a protected signer that the upload
-  adversary cannot invoke or compromise.
+*Computers & Security* was removed from consideration after checking its [current scope](https://shop.elsevier.com/journals/computers-and-security/0167-4048),
+which excludes security of AI/ML/LLM systems. The *Journal of Information Security and
+Applications* is a more plausible subject fit, but its [guidance](https://shop.elsevier.com/journals/journal-of-information-security-and-applications/2214-2126)
+screens out incremental AI/ML applications.
+JISA is Q1 under current SJR/Scopus quartiles and Q2 in Journal Citation Reports. Confirm which
+quartile index is required before describing it as the target Q1 venue.
 
-## Highest-priority gaps before paper submission
+## What changed in this revision
 
-1. **No real-model confirmation evidence is committed.** There is no `confirmation.jsonl` in
-   `results/paper/`. The manuscript still says replication on hosted and open-weight models is
-   future work. Until the confirmation study runs, keep the paper's conclusions explicitly
-   scoped to the deterministic mock and avoid presenting the study's existence in code as
-   empirical validation. The default study uses two models and roughly 3,200 completion calls
-   for one SQuAD seed; estimate provider cost and record exact model IDs, endpoint/provider,
-   date, sample count and failures with any run.
-2. **Query-level uncertainty remains unavailable for the archived results.** The manuscript
-   retains pooled rates as descriptive estimates and adds the observed min-to-max range across
-   seeds. New pinned main-study runs persist per-question outcomes, and report generation now
-   emits `query_uncertainty.json` with percentile bootstrap intervals over question clusters.
-   The archived rows still lack those outcomes; rerun the pinned main study before using these
-   intervals to revise the paper.
-3. **The measured corpus scale is small.** The abstract and conclusion now state that the
-   evaluated corpora contain 30 to 1,999 documents and do not establish enterprise-scale
-   behavior. A larger-corpus or scale-sensitivity experiment is still needed for that claim.
-4. **The signature result is a trust-boundary result.** The experiment now generates a fresh
-   HMAC key in memory and assumes the adversary cannot invoke or compromise the trusted signer.
-   It still does not prevent poisoning by a malicious authorized publisher. Signatures now bind
-   the document ID, source ID, and text in a canonical envelope, but do not prevent replay of an
-   old signed document. A deployment needs explicit signer authorization, freshness/replay
-   controls, and key rotation/revocation.
-5. **Independent replication is still needed.** Attack and defense implementations share one
-   codebase, and the adaptive attack was designed against the evaluated defenses. The paper
-   acknowledges this coupling; a second implementation or an independently designed adaptive
-   attack would strengthen the central finding.
-6. **The archived dataset snapshots are unknown.** The suite now pins SQuAD and HotpotQA to
-   immutable Hub commits and records source, revision, configuration and split in new result
-   rows. Existing `results/paper/` rows predate that metadata; rerun the study before claiming
-   that its current numbers correspond to the newly pinned snapshots.
-7. **Attack success uses a lenient scorer and full query access.** The paper now discloses that
-   it uses normalized substring matching and gives the attacker every benchmark question as a
-   target. A strict exact-match/token-F1 comparison and limited-target campaign remain untested.
+- The title, abstract, introduction, and highlights state the measured scope and avoid a
+  first-of-its-kind, general-defense, or enterprise-scale claim.
+- Related work now discusses SafeRAG, the 2025 poisoning benchmark, RAGForensics, TriShieldRAG,
+  and *Through the Stealth Lens*. Comparisons are explicitly qualitative because those systems
+  were not reproduced.
+- The HMAC mechanism is described as symmetric message authentication under a protected
+  publisher/signing service. The paper no longer implies that document IDs establish independent
+  evidence or publishers.
+- Main results, supplementary figures, result macros, and the local-model table are generated
+  from the experiment artifacts and included by the Elsevier manuscript. The local-model result
+  remains explicitly exploratory.
+- The main-study uncertainty is a 2,000-replicate bootstrap over question clusters, conditional
+  on three seeds. The public artifact export keeps SHA-256 cluster IDs and omits query, gold, and
+  generated-answer text, while retaining target-answer token-F1 scores for sensitivity analysis.
+- The Elsevier source now uses space-fitted, generated tables for the main comparison,
+  provenance controls, and clean-utility results. The complete 23-page PDF was built against
+  `elsarticle.cls` 3.4 with the requested `5p,times` options.
+- Highlights were rewritten and are each within Elsevier's 85-character limit.
+- The class remains `\documentclass[5p,times]{elsarticle}`.
 
-## Paper and artifact cleanup
+## Evidence and reproducibility limits
 
-- Verify each manuscript number against the generated tables and raw records after any rerun;
-  `paper-submission/MainPaper.tex` has been edited directly and is authoritative, while the
-  manuscript flattener is only a cross-check. All 341 result macros in the current submission
-  match the regenerated macro file exactly.
-- Record exact corpus snapshots/splits, embedding model and package versions, run command, and
-  random seeds in a compact reproducibility appendix. Dataset pins are now in the suite, but
-  dependency versions and the archived dataset snapshots remain unresolved.
-- Include clean utility and false-positive costs beside attack reductions wherever space allows;
-  the defense's utility trade-off is central to interpreting the results.
-- If confirmation results are added, update the limitations and abstract/conclusion together,
-  and report the generator's model, decoding parameters and whether the result cache was used.
-- The manuscript now uses Elsevier's `5p,times` two-column layout with numeric citations. Wide
-  tables and plots span both columns, and the updated 23-page PDF has been rendered for visual
-  review. There are no undefined citations or references; several small paragraph overfull boxes
-  (largest about 11 pt) remain for a final typography pass.
+- The main factorial uses a deterministic mock generator, three small corpora, one sentence
+  transformer retriever, exact inner-product search, and three seeds. It does not establish
+  production-scale behavior.
+- The pinned run completed all eight aggregate studies: 2,322 aggregate rows, plus 66,780
+  query-level outcomes for the main uncertainty and target-F1 analysis. Dataset and embedding
+  revisions are recorded in the artifact manifest. This is a reproducibility record, not evidence
+  of independent replication.
+- The local confirmation uses Qwen2.5 0.5B and Llama 3.2 1B in Q4_K_M, 100 SQuAD questions per
+  cell, and one seed. It shows a strong clean-accuracy cost and is not a hosted-model substitute.
+  No commercial hosted-model run was completed.
+- The adaptive campaign is a manually specified, one-factor-at-a-time diagnostic, not an
+  optimized or feedback-driven attacker. The attacker and defenses share one implementation.
+- Binary success is scored with normalized substring matching, which can count incidental answer
+  mentions. The main mock study now adds normalized target token-F1 as a graded sensitivity check;
+  exact match is still absent. The local-model confirmation exports only aggregates, so it has no
+  query-cluster intervals or target-F1 analysis.
+- The main comparison does not reproduce SafeRAG, RobustRAG, TrustRAG, TriShieldRAG, or the
+  attention-based detector from *Through the Stealth Lens* on a common dataset and threat model.
+- HMAC results assume the adversary cannot compromise or invoke the authorized publisher. The
+  experiment does not cover malicious authorized publishers, key rotation, freshness, replay,
+  or public-key alternatives.
 
-## Immediate repository correction
+## Highest-priority work before submission
 
-The README said the suite runs eight studies while listing the opt-in confirmation study as a
-ninth. It now distinguishes the eight offline studies from the paid, opt-in confirmation run.
+1. **Strengthen novelty.** Add a directly comparable baseline or a genuinely new mechanism or
+   benchmark contribution. A broader discussion alone will not resolve the incremental-work
+   concern.
+2. **Broaden model evidence.** Add more than two small local models and more than one seed; if a
+   hosted model is claimed, report the exact provider/model/version and a reproducible protocol.
+3. **Strengthen the adaptive evaluation.** Add an independently designed or optimized attacker,
+   limited-target campaigns, and an implementation-independent replication.
+4. **Complete metric validation.** Add exact match and target-F1 results to the real-model
+   confirmation, preferably with query-level outputs and cluster intervals. The current model
+   follow-up is aggregate-only, and the main study's token-F1 metric remains a sensitivity
+   measure alongside substring ASR.
+5. **Confirm journal requirements and author declarations.** Authors must verify funding,
+   conflicts of interest, CRediT roles, acknowledgements, the AI-assisted-writing declaration,
+   and the requested quartile index. The current AI statement says all authors reviewed and
+   edited the text; they must confirm that is accurate. These details cannot be inferred from
+   the repository and have not been invented.
+6. **Archive the final artifact.** A GitHub commit is useful for review; a DOI-backed release
+   (for example, through Zenodo) is preferable for a journal submission.
+
+## Literature overlap to cite and compare directly
+
+- SafeRAG, ACL 2025: <https://aclanthology.org/2025.acl-long.230/>.
+- “Benchmarking Poisoning Attacks against Retrieval-Augmented Generation,” arXiv 2505.18543:
+  <https://arxiv.org/abs/2505.18543>.
+- RAGForensics, WWW 2025: <https://doi.org/10.1145/3696410.3714756>.
+- TriShieldRAG, 2026 preprint: <https://arxiv.org/abs/2607.23838>.
+- “Through the Stealth Lens,” ICML 2026: <https://proceedings.mlr.press/v306/choudhary26b.html>.

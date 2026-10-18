@@ -279,7 +279,7 @@ def test_conditional_asr_is_none_without_a_baseline() -> None:
 
 
 def test_macro_names_contain_no_digits() -> None:
-    """TeX control words are letters only; a digit silently truncates the name.
+    r"""TeX control words are letters only; a digit silently truncates the name.
 
     ``\casrStaticSquadL3`` parses as ``\casrStaticSquadL`` followed by "3", so a generated
     name carrying a layer index or a budget must spell the number out.

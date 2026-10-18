@@ -1,0 +1,128 @@
+{
+  "format": "RAGSec compact paper artifact v1",
+  "aggregate_result_files": [
+    "backfill.jsonl",
+    "backfill_strict.jsonl",
+    "budget.jsonl",
+    "evasion.jsonl",
+    "generator.jsonl",
+    "main.jsonl",
+    "provenance.jsonl",
+    "threshold.jsonl"
+  ],
+  "study_rows": {
+    "backfill": 324,
+    "backfill_strict": 324,
+    "budget": 324,
+    "evasion": 126,
+    "generator": 216,
+    "main": 378,
+    "provenance": 90,
+    "threshold": 540
+  },
+  "dataset_pins": [
+    {
+      "dataset": "hotpotqa",
+      "source": "hotpotqa/hotpot_qa",
+      "config": "distractor",
+      "revision": "1908d6afbbead072334abe2965f91bd2709910ab",
+      "split": "validation"
+    },
+    {
+      "dataset": "squad",
+      "source": "rajpurkar/squad",
+      "config": null,
+      "revision": "7b6d24c440a36b6815f21b70d25016731768db1f",
+      "split": "validation"
+    },
+    {
+      "dataset": "toy",
+      "source": "toy",
+      "config": null,
+      "revision": null,
+      "split": null
+    }
+  ],
+  "query_outcomes": {
+    "file": "query_outcomes.jsonl.gz",
+    "records": 66780,
+    "cluster_id": "SHA-256 of exact UTF-8 question text",
+    "cluster_order": "Zero-based order after sorting distinct exact question strings within dataset; retains the original bootstrap draw order.",
+    "included_fields": [
+      "record_type",
+      "dataset",
+      "config",
+      "seed",
+      "attack",
+      "attacked",
+      "attack_success",
+      "baseline_correct",
+      "target_token_f1",
+      "question_cluster_id",
+      "question_cluster_order"
+    ],
+    "excluded": [
+      "question text",
+      "gold answer",
+      "attack target text",
+      "generated answer",
+      "latency"
+    ]
+  },
+  "local_model_outputs": [
+    "local_model/confirmation.jsonl",
+    "local_model/summary.json"
+  ],
+  "environment": {
+    "python": "Python 3.12.14",
+    "packages": {
+      "datasets": "5.1.0",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "sentence-transformers": "6.1.0",
+      "torch": "2.14.1",
+      "transformers": "5.20.1"
+    },
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "embedding_model_hub_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+    "cuda_available": false
+  },
+  "local_model_metadata": {
+    "dataset": "rajpurkar/squad",
+    "dataset_revision": "7b6d24c440a36b6815f21b70d25016731768db1f",
+    "split": "validation",
+    "queries_per_config": 100,
+    "seed": 0,
+    "decoding": {
+      "cache_enabled": true,
+      "max_tokens": 128,
+      "temperature": 0.0
+    },
+    "server": {
+      "implementation": "llama.cpp llama-server",
+      "version": "0.7.0-dev build 1 commit 620d2225c"
+    },
+    "models": [
+      {
+        "name": "qwen2.5-0.5b-local",
+        "upstream_model": "Qwen2.5-0.5B-Instruct",
+        "parameters": 494032768,
+        "quantization": "Q4_K_M",
+        "sha256": "6eb923e7d26e9cea28811e1a8e852009b21242fb157b26149d3b188f3a8c8653"
+      },
+      {
+        "name": "llama3.2-1b-local",
+        "upstream_model": "Llama 3.2 1B Instruct",
+        "parameters": 1235814432,
+        "quantization": "Q4_K_M",
+        "sha256": "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83"
+      }
+    ],
+    "interpretation_limits": [
+      "These quantized 0.5B and 1.2B local models are not substitutes for the planned GPT-4o or GPT-4o-mini provider runs.",
+      "The Llama cache includes 212 deterministic completions created before the first Llama server attempt hit the 8-GB OOM limit; that run resumed with reduced batch sizes. Temperature was zero and the same prompt/model cache keys were reused.",
+      "Do not interpret mean_latency_ms as comparative model latency: the shared completion cache makes cache-hit-heavy cells much faster in the recorded timing.",
+      "The confirmation output stores aggregate cell outcomes rather than per-question records, so the main-study question-cluster bootstrap does not apply to these rows."
+    ]
+  }
+}

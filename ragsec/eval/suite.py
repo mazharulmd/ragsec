@@ -112,7 +112,7 @@ CONFIG_LABELS = {
     "L3": "L3 robust aggregation",
     "L4": "L4 monitoring",
     "full": "Full defense",
-    "full_signed": "Full defense + signed ingestion",
+    "full_signed": "Full defense + HMAC-authenticated ingestion",
 }
 
 EVASION_LABELS = {

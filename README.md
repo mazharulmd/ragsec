@@ -1,7 +1,7 @@
 # ragsec: RAG Security and Poisoning Attack Defense
 
-Research codebase for the paper *RAG Security and Poisoning Attack Defense in LLM-Based
-Systems: A Layered Architecture and Its Limits Under an Adaptive Adversary*. It provides:
+Research codebase for the paper *Evaluating Layered RAG Defenses Against Adaptive Knowledge
+Poisoning: A Reproducible Security--Utility Study*. It provides:
 
 - an instrumented retrieval-augmented generation (RAG) pipeline with provenance-aware data models,
 - **five knowledge-base poisoning attacks**, including a defense-aware *adaptive* adversary,
@@ -12,12 +12,12 @@ Systems: A Layered Architecture and Its Limits Under an Adaptive Adversary*. It 
 
 ## Headline finding
 
-Against the four static attacks reproduced from the literature, the layered defense works as
-that literature predicts. Against an adaptive adversary that simply *rewrites* the payload —
-declarative instead of interrogative, assertive instead of imperative, uploaded under a spoofed
-trusted source — the retrieval filter's true-positive rate collapses and attack success returns
-to undefended levels. Requiring an unforgeable HMAC signature at ingestion is the only control
-in the study that survives. See [`RESULTS.md`](RESULTS.md).
+The pinned mock-generator results are corpus-dependent: on SQuAD, the full stack does not lower
+adaptive attack-attributable success, and on the toy corpus it raises it. HMAC-authenticated
+ingestion brings measured success close to zero under the protected-publisher assumption. A
+small local-model follow-up shows the full stack lowering raw adaptive success at a substantial
+clean-accuracy cost. The current manuscript and artifact bundle report the pinned evidence;
+[`RESULTS.md`](RESULTS.md) preserves an earlier, unpinned report for historical reference.
 
 ## Responsible use
 
@@ -28,10 +28,10 @@ the accompanying paper. They operate on a local corpus you supply and target a l
 nothing here attacks a third-party system.
 
 Use them on systems you own or are authorised to test. If you deploy RAG in production, the
-practical conclusion of this work is short: sign a canonical envelope containing each
-document's identity, source identity, and text at the source, then verify it at ingestion.
-Replay prevention and signer authorization remain deployment requirements. Every content-based
-control measured here was evaded by rewriting.
+practical implication is to authenticate a canonical envelope containing each document's
+identity, source identity, and text, then verify it at ingestion. This study uses HMAC, a
+symmetric message-authentication code; replay prevention and publisher authorization remain
+deployment requirements. Every content-based control measured here was evaded by rewriting.
 
 ## Architecture
 
@@ -72,7 +72,7 @@ ragsec attack --name adaptive_poison --query "What is the capital of France?" \
 
 | Layer | Class | Signals |
 |---|---|---|
-| L1 | `SourceVerificationLayer` | source allowlist, per-source trust with `min_trust`, HMAC-SHA256 signatures, content-hash dedupe, per-source quotas |
+| L1 | `SourceVerificationLayer` | source allowlist, per-source trust with `min_trust`, HMAC-SHA256 message authentication, content-hash dedupe, per-source quotas |
 | L2 | `RetrievalFilterLayer` | `InstructionPatternFilter` (NFKC + invisible-char stripping), `QueryEchoFilter`, `SimilarityOutlierFilter`, `NaturalnessFilter` |
 | L3 | `RobustAggregationLayer` | per-passage isolated generation, trust × relevance² weighted voting, cross-source redundancy bonus, abstain on low margin |
 | L4 | `MonitoringLayer` | Jensen–Shannon drift between query windows, benchmark ranking-shift alerts, canary queries |
@@ -102,17 +102,21 @@ sentence-transformers when available and falls back to hashing otherwise.
 ## Reproducing the paper
 
 ```bash
-ragsec suite                    # all studies -> results/paper-pinned/*.jsonl (several hours)
-ragsec figures                  # tables + figures -> paper/tables, paper/figures
+ragsec suite --studies main evasion budget threshold backfill backfill_strict provenance generator \
+  --output-dir results/paper-pinned
+python scripts/export_paper_artifacts.py results/paper-pinned paper-submission/artifacts \
+  --local-model-dir results/paper-local-model
+ragsec figures --results-dir paper-submission/artifacts --output-dir paper-submission \
+  --manuscript paper-submission/MainPaper.tex --strict
 ```
 
 The committed records in `results/paper/` predate dataset revision tracking. New runs use pinned
 Hub revisions and a separate output directory, so they cannot be mixed with those archived
 records. The SQuAD and HotpotQA commit IDs are recorded in `ragsec/eval/suite.py` and copied
 into every new result row. Main-study per-question outcomes are written under
-`results/paper-pinned/main_query_records/`. Regenerate figures and query-cluster bootstrap
-intervals from the new run with `ragsec figures --results-dir results/paper-pinned`; the
-intervals are written to `paper/query_uncertainty.json` and are conditional on the included
+`results/paper-pinned/main_query_records/`; the export step retains hashed cluster IDs, attack
+outcomes, and target token-F1 scores for the bootstrap while omitting question and answer text. The report writes its query
+intervals to `paper-submission/query_uncertainty.json`; they are conditional on the included
 experiment seeds.
 
 `ragsec suite` runs eight offline studies by default. A ninth, real-model confirmation study is
@@ -128,7 +132,7 @@ opt-in because it calls a model endpoint; each study writes one JSONL file and c
 | `backfill_strict` | The same sweep at an aggressive filter threshold — the only regime where backfill can matter. |
 | `provenance` | Do allowlists and trust scores survive a provenance-spoofing adversary, and does HMAC signing recover? |
 | `generator` | How much of the measured risk comes from an injection-susceptible generator rather than from retrieval? |
-| `confirmation` | Does the headline result hold on real language models rather than the mock generator? **Calls a paid API; opt-in.** |
+| `confirmation` | Does the headline result hold on real language models rather than the mock generator? **Requires a model endpoint; opt-in.** |
 
 Restrict the grid while iterating:
 
@@ -148,7 +152,8 @@ also the obvious objection, since the mock obeys injected instructions by constr
 `confirmation` study answers that objection on a reduced grid (SQuAD, 100 queries, one seed,
 four configurations, three attacks) using real models.
 
-It calls a metered endpoint, so it is excluded from a bare `ragsec suite` and must be named:
+It calls an OpenAI-compatible model endpoint, which may be local or metered, so it is excluded
+from a bare `ragsec suite` and must be named:
 
 ```bash
 export OPENAI_API_KEY=...        # read from the environment, never stored
@@ -207,14 +212,17 @@ for c in configs/ablation_*.yaml; do ragsec evaluate "$c"; done
 
 ## The paper
 
-`paper-submission/` holds the manuscript, formatted for **Computers & Security** (Elsevier):
+`paper-submission/` holds the revised manuscript, formatted for the *Journal of Information
+Security and Applications* (Elsevier):
 
 ```
 paper-submission/MainPaper.tex    the manuscript (elsarticle class)
 paper-submission/MainPaper.pdf    compiled 5p, Times two-column copy
 paper-submission/Highlights.tex   Elsevier highlights, uploaded as a separate item
-paper-submission/References.bib   55 references, 52 with DOIs, all verified Oct 2026
-paper-submission/figures/         Fig1.pdf ... Fig12.pdf
+paper-submission/References.bib   bibliography for the manuscript
+paper-submission/tables/          generated LaTeX tables and result macros
+paper-submission/figures/         generated PDF figures
+paper-submission/artifacts/       compact results used to rebuild the report
 ```
 
 `elsarticle` ships with TeX Live, MiKTeX and Overleaf, so nothing needs downloading:
@@ -223,40 +231,53 @@ paper-submission/figures/         Fig1.pdf ... Fig12.pdf
 cd paper-submission && pdflatex MainPaper && bibtex MainPaper && pdflatex MainPaper && pdflatex MainPaper
 ```
 
-The manuscript uses Elsevier's requested `\documentclass[5p,times]{elsarticle}` layout and
-numeric Elsevier bibliography style. Wide tables and figures span both columns.
-The signed-ingestion study creates a fresh 256-bit key at runtime. Never place signing keys in
+The authenticated-ingestion study creates a fresh 256-bit HMAC key at runtime. Never place keys in
 YAML configs or committed source.
+
+The manuscript uses Elsevier's `\documentclass[5p,times]{elsarticle}` layout and numeric
+citations; wide tables and figures span both columns. JISA's [current scope](https://shop.elsevier.com/journals/journal-of-information-security-and-applications/2214-2126)
+is a better fit than *Computers & Security*, whose [stated scope](https://shop.elsevier.com/journals/computers-and-security/0167-4048)
+excludes security of AI/ML/LLM systems. The venue is a candidate, not an acceptance prediction.
+JISA is Q1 in current SJR/Scopus metrics but Q2 in Journal Citation Reports; confirm which
+quartile index the target institution requires before submission.
 
 ### Submission history
 
 | Venue | Outcome |
 |---|---|
 | MDPI *Information* (information-4616315), submitted 23 Sep 2026 | Desk-rejected without review, 26 Sep 2026 |
-| Computers & Security | In preparation |
+| *Computers & Security* | Removed from consideration after checking its current scope |
+| *Journal of Information Security and Applications* | Current candidate; not submitted |
 
 The MDPI-formatted version and its compiled PDF are in the git history at commit `35304b3`.
 
 ### Where the numbers come from
 
-Every figure and every value quoted in the manuscript is produced by the experiment suite, not
-typed by hand:
+Tables, figures, and aggregate-result macros in the manuscript are regenerated from the compact
+artifact bundle. The local-model confirmation table is derived from its included aggregate
+JSONL output. Query-level bootstrap records contain hashes rather than source question text and
+retain target token-F1 scores as a graded sensitivity measure.
 
 ```
-results/paper/*.jsonl   archived raw result records, 2322 of them, predate revision tracking
-results/paper-pinned/   destination for new runs with pinned Hub snapshots and revision metadata
-paper/figures/          generated by `ragsec figures`; Fig1..Fig12 are these, renamed
-paper/tables/           generated by `ragsec figures`, including every inline result value
-paper/body.tex          the working prose source the submission was assembled from
+results/paper/*.jsonl                     archived raw result records, predating revision tracking
+results/paper-pinned/                     pinned run outputs (local; raw query text included)
+paper-submission/artifacts/*.jsonl        aggregate experiment results
+paper-submission/artifacts/query_outcomes.jsonl.gz
+                                          hashed, per-query outcomes for cluster intervals
+paper-submission/tables/                  generated LaTeX fragments and result macros
+paper-submission/figures/                 generated PDF figures
 ```
 
-`ragsec figures` reads `results/paper-pinned/` by default; use
-`ragsec figures --results-dir results/paper` to regenerate the archived results. `ragsec
-manuscript` flattens the working sources into `paper/generated/template.tex` as a reference
-build. Note that
-`MainPaper.tex` has since been edited directly (author list, US spelling, a related-work
-comparison table, corrected notation), so it is the authoritative version and the flattener's
-output is only a cross-check.
+To regenerate the paper's tables, figures, and macros from the public artifact bundle, run
+`pip install -e '.[paper,datasets]'` followed by
+`ragsec figures --results-dir paper-submission/artifacts --output-dir paper-submission
+--manuscript paper-submission/MainPaper.tex --strict`, then compile `MainPaper.tex` with the
+commands above. The dataset extra is used to regenerate
+corpus statistics; it fetches the pinned public snapshots if they are not cached. To export a new run, use
+`python scripts/export_paper_artifacts.py results/paper-pinned paper-submission/artifacts
+--local-model-dir results/paper-local-model`. This export omits question text, reference answers,
+and model-generated answers while retaining the query-cluster outcomes needed for the reported
+bootstrap intervals. The full raw run remains local under `results/`.
 
 ## Repository layout
 
@@ -267,7 +288,8 @@ ragsec/defenses    the four defense layers
 ragsec/eval        datasets, metrics, experiment runner, experiment suite, report generator
 ragsec/cli.py      command-line entry point
 configs/           baseline, full defense, signed ingestion, per-layer ablations
-paper/             manuscript sources plus generated tables and figures
+paper-submission/  authoritative Elsevier source, generated tables, figures, and artifacts
+paper/             previous report-output directory
 results/paper/     raw suite output (JSONL)
 tests/             pytest suite
 ```

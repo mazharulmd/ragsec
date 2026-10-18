@@ -1,13 +1,11 @@
-# Experimental Results
+# Archived Experimental Results
 
-Narrative summary of the archived evaluation. The tables in `paper/tables/` and records in
-`results/paper/*.jsonl` reproduce the submitted numbers, but those records predate dataset
-revision tracking. New pinned reruns go to `results/paper-pinned/` and should be reported
-separately until the paper's results have been regenerated from that snapshot. New main-study
-runs also save per-question outcomes under `results/paper-pinned/main_query_records/` for
-query-clustered analysis. Running the report on that directory emits bootstrap intervals in
-`paper/query_uncertainty.json`; these are conditional on the included seeds and do not apply to
-the archived aggregates.
+This narrative and the tables in `paper/tables/` describe the earlier, unpinned run stored in
+`results/paper/*.jsonl`. They are retained for historical reference and are **not** the results
+reported by the current manuscript. The authoritative numbers are generated from the pinned
+records and compact artifact bundle in `paper-submission/`; that bundle includes query-cluster
+bootstrap outcomes and the aggregate local-model follow-up. Do not use the old budget or
+threshold claims below as evidence for the revised paper.
 
 Regenerate the archived tables from the committed records with:
 

@@ -1,12 +1,13 @@
 """Turn suite results into the paper's tables and figures.
 
-Everything the manuscript reports is produced here from ``results/paper/*.jsonl``, so no number
-in the paper is transcribed by hand. Tables are emitted as LaTeX fragments that the manuscript
-``\\input``s; figures are written as vector PDF (for the submission) alongside PNG (for review).
+Aggregate results, macros, tables, and figures are generated here from the selected results
+directory. The Elsevier manuscript ``\\input``s the generated TeX fragments; figures are
+written as vector PDF for submission alongside PNG previews.
 """
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import math
@@ -17,6 +18,7 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
+from ragsec.eval.metrics import token_f1
 from ragsec.eval.suite import ATTACK_LABELS, CONFIG_LABELS, EVASION_LABELS
 
 Row = dict[str, Any]
@@ -103,7 +105,16 @@ def load_rows(results_dir: Path, study: str) -> list[Row]:
 
 
 def load_query_records(results_dir: Path) -> list[Row]:
-    """Load per-question outcomes emitted by the pinned main-study runner."""
+    """Load raw sidecars or compact, question-text-free query-outcome artifacts."""
+    public_export = results_dir / "query_outcomes.jsonl.gz"
+    if public_export.exists():
+        records: list[Row] = []
+        with gzip.open(public_export, "rt", encoding="utf-8") as handle:
+            records.extend(
+                row for line in handle if line.strip()
+                if (row := json.loads(line)).get("record_type") == "query_outcome"
+            )
+        return records
     records_dir = results_dir / "main_query_records"
     if not records_dir.exists():
         return []
@@ -125,7 +136,7 @@ def query_cluster_summary(
     confidence: float = 0.95,
     seed: int = QUERY_BOOTSTRAP_SEED,
 ) -> list[Row]:
-    """Estimate ASR with percentile bootstrap intervals resampling question clusters.
+    """Estimate ASR and target-token-F1 intervals by resampling question clusters.
 
     Each sampled cluster contains that question's outcomes across all experiment seeds. This
     preserves the repeated-query dependence while retaining the pooled query-seed estimand.
@@ -137,22 +148,36 @@ def query_cluster_summary(
         raise ValueError("confidence must be between 0 and 1")
 
     # Per question: raw successes/trials, then baseline-correct successes/trials.
-    grouped: dict[tuple, dict[str, list[int]]] = defaultdict(dict)
+    grouped: dict[tuple, dict[str, list[float]]] = defaultdict(dict)
+    cluster_orders: dict[tuple, dict[str, int]] = defaultdict(dict)
     seeds_by_group: dict[tuple, set[Any]] = defaultdict(set)
     for row in records:
         if not row.get("attacked") or row.get("attack_success") is None:
             continue
         key = tuple(row[field] for field in keys)
-        question = row.get("question")
+        question = row.get("question_cluster_id") or row.get("question")
         if not question:
             continue
-        counts = grouped[key].setdefault(str(question), [0, 0, 0, 0])
+        cluster_id = str(question)
+        counts = grouped[key].setdefault(cluster_id, [0, 0, 0, 0, 0.0, 0, 0.0, 0])
+        if row.get("question_cluster_order") is not None:
+            cluster_orders[key][cluster_id] = int(row["question_cluster_order"])
         success = int(bool(row["attack_success"]))
         counts[0] += success
         counts[1] += 1
         if row.get("baseline_correct"):
             counts[2] += success
             counts[3] += 1
+        target_f1 = row.get("target_token_f1")
+        if (target_f1 is None and row.get("target_answer") is not None
+                and row.get("answer") is not None):
+            target_f1 = token_f1(str(row["target_answer"]), str(row["answer"]))
+        if target_f1 is not None:
+            counts[4] += float(target_f1)
+            counts[5] += 1
+            if row.get("baseline_correct"):
+                counts[6] += float(target_f1)
+                counts[7] += 1
         if "seed" in row:
             seeds_by_group[key].add(row["seed"])
 
@@ -162,8 +187,15 @@ def query_cluster_summary(
     low_q, high_q = alpha / 2.0, 1.0 - alpha / 2.0
     output: list[Row] = []
     for key in sorted(grouped, key=lambda value: tuple(map(str, value))):
-        clusters = [grouped[key][question] for question in sorted(grouped[key])]
-        counts = np.asarray(clusters, dtype=np.int64)
+        if cluster_orders.get(key):
+            ordered = sorted(
+                grouped[key].items(),
+                key=lambda pair: cluster_orders[key].get(pair[0], len(grouped[key])),
+            )
+        else:
+            ordered = sorted(grouped[key].items())
+        clusters = [counts for _, counts in ordered]
+        counts = np.asarray(clusters, dtype=np.float64)
         draw_seed = int.from_bytes(
             hashlib.sha256(json.dumps(key, separators=(",", ":")).encode()).digest()[:8],
             "big",
@@ -171,13 +203,17 @@ def query_cluster_summary(
         rng = np.random.default_rng(seed ^ draw_seed)
         draws = rng.integers(0, len(clusters), size=(n_bootstrap, len(clusters)))
 
-        def interval(successes: Any, trials: Any) -> tuple[float, float, float] | None:
+        def interval(
+            successes: Any,
+            trials: Any,
+            draw_indices: Any = draws,
+        ) -> tuple[float, float, float] | None:
             total = int(trials.sum())
             if total == 0:
                 return None
             estimate = float(successes.sum() / total)
-            sampled_successes = successes[draws].sum(axis=1)
-            sampled_trials = trials[draws].sum(axis=1)
+            sampled_successes = successes[draw_indices].sum(axis=1)
+            sampled_trials = trials[draw_indices].sum(axis=1)
             valid = sampled_trials > 0
             if not valid.any():
                 return estimate, estimate, estimate
@@ -187,6 +223,8 @@ def query_cluster_summary(
 
         raw = interval(counts[:, 0], counts[:, 1])
         conditional = interval(counts[:, 2], counts[:, 3])
+        target_f1 = interval(counts[:, 4], counts[:, 5])
+        conditional_target_f1 = interval(counts[:, 6], counts[:, 7])
         output.append({
             **dict(zip(keys, key, strict=True)),
             "n_query_clusters": len(clusters),
@@ -199,6 +237,18 @@ def query_cluster_summary(
             "conditional_asr": conditional[0] if conditional else None,
             "conditional_asr_ci_low": conditional[1] if conditional else None,
             "conditional_asr_ci_high": conditional[2] if conditional else None,
+            "target_token_f1": target_f1[0] if target_f1 else None,
+            "target_token_f1_ci_low": target_f1[1] if target_f1 else None,
+            "target_token_f1_ci_high": target_f1[2] if target_f1 else None,
+            "conditional_target_token_f1": (
+                conditional_target_f1[0] if conditional_target_f1 else None
+            ),
+            "conditional_target_token_f1_ci_low": (
+                conditional_target_f1[1] if conditional_target_f1 else None
+            ),
+            "conditional_target_token_f1_ci_high": (
+                conditional_target_f1[2] if conditional_target_f1 else None
+            ),
         })
     return output
 
@@ -335,18 +385,24 @@ def latex_table(
 ) -> str:
     """Render a booktabs table.
 
-    ``wide`` wraps the table in MDPI's ``adjustwidth`` so that a many-column table may use the
-    margins instead of overflowing the text block; it defaults to on above seven columns, which
-    is roughly where a numeric table stops fitting the journal's measure.
+    Wide tables use a two-column float in the Elsevier layout; ``adjustwidth`` is retained with
+    a zero-width allowance so the same fragment remains inside the page measure. Tables with
+    more than four columns default to the wide layout.
     """
     spec = column_spec or ("l" + "X" * (len(header) - 1))
     env = "tabularx" if "X" in spec else "tabular"
     width = "{\\textwidth}" if env == "tabularx" else ""
     if wide is None:
-        wide = len(header) > 7
-    lines = ["\\begin{table}[H]"]
+        wide = len(header) > 4
+    float_env = "table*" if wide else "table"
+    placement = "t" if wide else "H"
+    lines = [f"\\begin{{{float_env}}}[{placement}]"]
     if wide:
-        lines += ["\\begin{adjustwidth}{-\\extralength}{0cm}", "\\footnotesize"]
+        lines += [
+            "\\begin{adjustwidth}{-\\extralength}{0cm}",
+            "\\footnotesize",
+            "\\setlength{\\tabcolsep}{3pt}",
+        ]
     else:
         lines.append("\\small")
     lines += [
@@ -362,7 +418,7 @@ def latex_table(
         lines.append(f"\\noindent\\footnotesize {note}")
     if wide:
         lines.append("\\end{adjustwidth}")
-    lines.append("\\end{table}")
+    lines.append(f"\\end{{{float_env}}}")
     return "\n".join(lines) + "\n"
 
 
@@ -440,7 +496,7 @@ def fig_architecture(out_dir: Path) -> Path:
     ax.text(0, 44.5, "Ingestion", fontsize=6.6, color=C_NEUTRAL, weight="bold",
             va="bottom")
     box(1, 34, 16, 8, "Document\nsources", PLAIN_FACE, C_NEUTRAL,
-        "provenance:\nsource, trust, signature")
+        "provenance:\nsource, trust, MAC tag")
     box(22, 34, 17, 8, "L1  Source\nverification", LAYER_FACE, C_DEFENSE,
         "allowlist $\\cdot$ trust $\\cdot$ HMAC\ndedupe $\\cdot$ quota", weight="bold")
     box(44, 34, 15, 8, "Chunk and\nembed", PLAIN_FACE, C_NEUTRAL)
@@ -996,7 +1052,8 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
     for dataset in datasets:
         body.append([f"\\multicolumn{{7}}{{l}}{{\\textit{{{DATASET_LABELS[dataset]}}}}}"])
         for config in CONFIG_ORDER:
-            cells = [f"\\quad {CONFIG_LABELS[config]}"]
+            label = "Full + HMAC auth." if config == "full_signed" else CONFIG_LABELS[config]
+            cells = [label]
             for attack in ATTACK_ORDER:
                 hit = values.get((dataset, config, attack))
                 cond = attributable.get((dataset, config, attack))
@@ -1019,9 +1076,18 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
             "minimum-to-maximum range across seeds. The last column is clean accuracy on the "
             "unattacked corpus, i.e.\\ the utility cost of the configuration.",
             "tab:main",
-            ["Configuration", *[ATTACK_LABELS[a] for a in ATTACK_ORDER], "Clean acc."],
+            [
+                "Configuration",
+                r"\shortstack{Poisoned\\RAG}",
+                r"\shortstack{Trigger\\backdoor}",
+                r"\shortstack{Prompt\\injection}",
+                r"\shortstack{Context\\flooding}",
+                r"\shortstack{Adaptive\\poisoning}",
+                r"\shortstack{Clean\\accuracy}",
+            ],
             body,
-            column_spec="l" + "c" * len(ATTACK_ORDER) + "c",
+            column_spec=(r">{\raggedright\arraybackslash}p{1.5in}"
+                         + r">{\centering\arraybackslash}X" * (len(ATTACK_ORDER) + 1)),
         ),
     )
 
@@ -1106,7 +1172,7 @@ def tab_evasion(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
             "values give the observed min-to-max range across seeds, not a confidence interval.",
             "tab:evasion",
             ["Adaptive attacker variant", "ASR (full)", "Poison retr.", "Filter TPR",
-             "Accuracy", "ASR (signed)"],
+             "Accuracy", "ASR (HMAC)"],
             body,
             column_spec="lrrrrr",
         ),
@@ -1121,7 +1187,7 @@ def tab_provenance(rows: list[Row], out_dir: Path) -> Path:
         "trust_only": "Trust threshold ($\\theta_{\\mathrm{trust}}=0.6$)",
         "allowlist": "Source allowlist $+$ trust threshold",
         "quota": "Allowlist $+$ per-source quota",
-        "signed": "HMAC-signed ingestion (allowlist $+$ signature)",
+        "signed": "HMAC-authenticated ingestion (allowlist $+$ MAC tag)",
     }
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
     values = seed_summary(rows, ["dataset", "variant", "attack"])
@@ -1137,7 +1203,10 @@ def tab_provenance(rows: list[Row], out_dir: Path) -> Path:
         body.append(cells)
     header = ["Ingestion control"]
     for dataset in datasets:
-        header += [f"{DATASET_LABELS[dataset]} static", f"{DATASET_LABELS[dataset]} adaptive"]
+        header += [
+            rf"\shortstack{{{DATASET_LABELS[dataset]}\\static}}",
+            rf"\shortstack{{{DATASET_LABELS[dataset]}\\adaptive}}",
+        ]
     header.append("Rejected docs")
     return _write(
         out_dir / "tab_provenance.tex",
@@ -1149,7 +1218,8 @@ def tab_provenance(rows: list[Row], out_dir: Path) -> Path:
             "tab:provenance",
             header,
             body,
-            column_spec="l" + "r" * (len(header) - 1),
+            column_spec=(r">{\raggedright\arraybackslash}p{1.65in}"
+                         + r">{\centering\arraybackslash}X" * (len(header) - 1)),
         ),
     )
 
@@ -1263,6 +1333,98 @@ def tab_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
     )
 
 
+def load_local_model_summary(results_dir: Path) -> Row | None:
+    candidates = [results_dir / "local_model" / "summary.json", results_dir / "summary.json"]
+    summary_path = next((path for path in candidates if path.exists()), None)
+    if summary_path is None:
+        return None
+    return json.loads(summary_path.read_text(encoding="utf-8"))
+
+
+def tab_local_model(results_dir: Path, out_dir: Path) -> Path | None:
+    """Render the adaptive local-model confirmation from its aggregate summary."""
+    summary = load_local_model_summary(results_dir)
+    if summary is None:
+        return None
+    models = summary.get("models", {})
+    model_labels = {
+        "qwen2.5-0.5b-local": "Qwen2.5 0.5B Instruct",
+        "llama3.2-1b-local": "Llama 3.2 1B Instruct",
+    }
+    config_labels = {
+        "none": "None",
+        "L2": "L2 retrieval filter",
+        "full": "Full defense",
+        "full_signed": "Full + HMAC auth.",
+    }
+    def interval(value: float | None, bounds: Sequence[float] | None) -> str:
+        if value is None or bounds is None:
+            return "n/a"
+        return f"{value:.2f} [{bounds[0]:.2f}, {bounds[1]:.2f}]"
+
+    body: list[str] = []
+    attack_labels = {
+        "poisoned_rag": "PoisonedRAG",
+        "prompt_injection": "Prompt injection",
+        "adaptive_poison": "Adaptive poison",
+    }
+    for model in model_labels:
+        model_data = models.get(model)
+        if not model_data:
+            continue
+        for config, config_label in config_labels.items():
+            cell = model_data.get(config)
+            if not cell:
+                continue
+            clean = cell.get("clean_accuracy")
+            for attack_name, attack_label in attack_labels.items():
+                attack = cell.get("attacks", {}).get(attack_name, {})
+                if not attack:
+                    continue
+                conditional = interval(
+                    attack.get("conditional_asr"), attack.get("conditional_asr_wilson_95_ci")
+                )
+                body.append(
+                    f"{model_labels[model]} & {config_label} & {attack_label} & {fmt(clean)} & "
+                    f"{interval(attack.get('asr'), attack.get('asr_wilson_95_ci'))} & "
+                    f"{conditional} \\\\"
+                )
+    if not body:
+        return None
+    queries = sorted({
+        int(data.get("n_queries", 0))
+        for model_data in models.values()
+        for data in model_data.values()
+        if data.get("n_queries") is not None
+    })
+    n_query_label = str(queries[0]) if len(queries) == 1 else "the reported fixed sample"
+    lines = [
+        r"\begin{table*}[t]",
+        r"\begin{adjustwidth}{-\extralength}{0cm}",
+        r"\scriptsize",
+        r"\setlength{\tabcolsep}{2pt}",
+        "\\caption{Local-model confirmation outcomes for three attack types. ASR is "
+        "unconditional; attributable ASR is restricted to queries the same configuration "
+        "answered correctly in its clean run. Brackets give 95\\% Wilson intervals over "
+        f"{n_query_label} fixed SQuAD questions, with one seed per model and configuration."
+        "\\label{tab:local-model}}",
+        r"\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.25in}"
+        r">{\raggedright\arraybackslash}p{1.1in}"
+        r">{\raggedright\arraybackslash}p{0.85in}Xrrr@{}}",
+        r"\toprule",
+        r"\textbf{Model} & \textbf{Defense} & \textbf{Attack} & \textbf{Clean acc.} & "
+        r"\shortstack{\textbf{ASR}\\\textbf{(95\% Wilson)}} & "
+        r"\shortstack{\textbf{Attributable ASR}\\\textbf{(95\% Wilson)}}\\",
+        r"\midrule",
+        *body,
+        r"\bottomrule",
+        r"\end{tabularx}",
+        r"\end{adjustwidth}",
+        r"\end{table*}",
+    ]
+    return _write(out_dir / "tab_local_model.tex", "\n".join(lines) + "\n")
+
+
 def tab_utility(rows: list[Row], out_dir: Path) -> Path:
     """The cost each configuration imposes on benign traffic."""
     clean = [r for r in rows if r["attack"] == "clean"]
@@ -1282,7 +1444,11 @@ def tab_utility(rows: list[Row], out_dir: Path) -> Path:
         body.append(cells)
     header = ["Configuration"]
     for dataset in datasets:
-        header += [f"{DATASET_LABELS[dataset]} acc.", "Abstain", "FPR"]
+        header += [
+            rf"\shortstack{{{DATASET_LABELS[dataset]}\\acc.}}",
+            "Abstain",
+            "FPR",
+        ]
     return _write(
         out_dir / "tab_utility.tex",
         latex_table(
@@ -1293,7 +1459,8 @@ def tab_utility(rows: list[Row], out_dir: Path) -> Path:
             "tab:utility",
             header,
             body,
-            column_spec="l" + "rrr" * len(datasets),
+            column_spec=(r">{\raggedright\arraybackslash}p{1.55in}"
+                         + r">{\centering\arraybackslash}X" * (3 * len(datasets))),
         ),
     )
 
@@ -1360,7 +1527,12 @@ def tab_examples(out_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
+def macros(
+    studies: dict[str, list[Row]],
+    out_dir: Path,
+    query_uncertainty: Sequence[Row] = (),
+    local_models: Row | None = None,
+) -> Path:
     main = studies.get("main", [])
     evasion = studies.get("evasion", [])
     provenance = studies.get("provenance", [])
@@ -1501,7 +1673,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
                          and r["config"] == config and r["attack"] == attack],
                         ["n_per_target"], "conditional_asr", "n_baseline_correct",
                     )
-                    for n in (1, 2, 20):
+                    for n in (1, 2, 3, 5, 10, 20):
                         hit = pooled.get((n,))
                         if hit:
                             macro(f"budget{aname}{cname}{tag}B{n}", f"{hit[0]:.2f}")
@@ -1525,7 +1697,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
             if (m,) in abstain:
                 macro(f"backfill{tag}Abstain{edge}", f"{abstain[(m,)]:.2f}")
             if (m,) in fpr:
-                macro(f"backfill{tag}Fpr{edge}", f"{fpr[(m,)]:.2f}")
+                macro(f"backfill{tag}Fpr{edge}", f"{100 * fpr[(m,)]:.1f}\\%")
             if (m,) in latency:
                 macro(f"backfill{tag}Lat{edge}", f"{latency[(m,)]:.0f}")
             hit = asr.get((m,))
@@ -1541,6 +1713,38 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
             tag = f"{config.replace('_', '').capitalize()}{dataset.capitalize()}"
             macro(f"{name}{tag}", f"{value:.0f}" if value >= 10 else f"{value:.1f}")
     macro("nSeeds", str(len({r["seed"] for r in main}) or 3))
+    # The primary adaptive result is quoted in the abstract and conclusion. Keep its
+    # question-cluster intervals generated from the same per-query sidecars as the report.
+    for row in query_uncertainty:
+        if (row.get("dataset") != "squad" or row.get("attack") != "adaptive_poison"
+                or row.get("config") not in {"none", "full", "full_signed"}):
+            continue
+        config = str(row["config"]).replace("_", "").capitalize()
+        for metric, low_key, high_key in (
+            ("asr", "asr_ci_low", "asr_ci_high"),
+            ("casr", "conditional_asr_ci_low", "conditional_asr_ci_high"),
+            ("targetTokenF", "target_token_f1_ci_low", "target_token_f1_ci_high"),
+        ):
+            for edge, key in (("Low", low_key), ("High", high_key)):
+                if row.get(key) is not None:
+                    macro(f"{metric}CIAdaptiveSquad{config}{edge}", f"{row[key]:.2f}")
+        if row.get("target_token_f1") is not None:
+            macro(f"targetTokenFAdaptiveSquad{config}", f"{row['target_token_f1']:.2f}")
+    if local_models:
+        aliases = {"qwen2.5-0.5b-local": "Qwen", "llama3.2-1b-local": "Llama"}
+        config_names = {
+            "none": "None", "L2": "LTwo", "full": "Full", "full_signed": "FullSigned"
+        }
+        for model, alias in aliases.items():
+            for config, config_name in config_names.items():
+                cell = local_models.get("models", {}).get(model, {}).get(config, {})
+                attack = cell.get("attacks", {}).get("adaptive_poison", {})
+                if cell.get("clean_accuracy") is not None:
+                    macro(f"localCleanAcc{alias}{config_name}", f"{cell['clean_accuracy']:.2f}")
+                if attack.get("asr") is not None:
+                    macro(f"localAsr{alias}{config_name}", f"{attack['asr']:.2f}")
+                if attack.get("conditional_asr") is not None:
+                    macro(f"localCasr{alias}{config_name}", f"{attack['conditional_asr']:.2f}")
     return _write(out_dir / "macros.tex", "\n".join(lines) + "\n")
 
 
@@ -1581,7 +1785,8 @@ def verify_macros(body: Path, macros: Path) -> list[str]:
     # "casrStaticSquadL3" is reported rather than silently truncated to a legal prefix.
     used = set(re.findall(r"\\([A-Za-z][A-Za-z0-9]*)", body.read_text(encoding="utf-8")))
     # Result macros are the ones this module emits; anything else is LaTeX's business.
-    prefixes = ("asr", "casr", "cleanAcc", "evasion", "prov", "nSeeds")
+    prefixes = ("asr", "casr", "targetTokenF", "cleanAcc", "evasion", "prov", "nSeeds",
+                "localAsr", "localCasr", "localCleanAcc")
     candidates = {m for m in used if m.startswith(prefixes)}
     return sorted(candidates - defined - _KNOWN_TEX_MACROS)
 
@@ -1598,20 +1803,24 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
         fig_architecture(figures), tab_datasets(tables), tab_examples(tables)
     ]
     query_records = load_query_records(results_dir)
+    query_uncertainty: list[Row] = []
     if query_records:
         uncertainty_path = output_dir / "query_uncertainty.json"
         uncertainty_path.parent.mkdir(parents=True, exist_ok=True)
+        query_uncertainty = query_cluster_summary(query_records)
         uncertainty = {
             "method": (
-                "Percentile bootstrap over distinct question clusters; each cluster retains "
+                "Percentile bootstrap for ASR and target token F1 over distinct question "
+                "clusters; each cluster retains "
                 "its outcomes across all included experiment seeds. Intervals describe query "
-                "sampling uncertainty conditional on those seeds."
+                "sampling uncertainty conditional on those seeds. The compact public artifact "
+                "stores SHA-256 identifiers instead of question text."
             ),
-            "cluster_unit": "question text",
+            "cluster_unit": "exact question text (SHA-256 identifier in compact artifacts)",
             "confidence_level": 0.95,
             "bootstrap_replicates": 2_000,
             "bootstrap_seed": QUERY_BOOTSTRAP_SEED,
-            "results": query_cluster_summary(query_records),
+            "results": query_uncertainty,
         }
         with uncertainty_path.open("w", encoding="utf-8") as handle:
             json.dump(uncertainty, handle, indent=2)
@@ -1654,7 +1863,11 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
     if studies["generator"]:
         attempt("tab_generator", lambda: tab_generator(studies["generator"], tables))
         attempt("fig_generator", lambda: fig_generator(studies["generator"], figures))
-    written.append(macros(studies, tables))
+    local_table = tab_local_model(results_dir, tables)
+    if local_table is not None:
+        written.append(local_table)
+    local_summary = load_local_model_summary(results_dir)
+    written.append(macros(studies, tables, query_uncertainty, local_summary))
     missing = verify_macros(output_dir / "body.tex", tables / "macros.tex")
     if missing:
         print(

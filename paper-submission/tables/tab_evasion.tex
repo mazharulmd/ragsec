@@ -1,0 +1,20 @@
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{Leave-one-out ablation of the adaptive attacker's evasion techniques on SQuAD ($3$ poisoned documents per target). Each row disables one technique and leaves the other five in place, so a drop in ASR identifies a technique the defense depends on the adversary \emph{not} using. Bracketed values give the observed min-to-max range across seeds, not a confidence interval.\label{tab:evasion}}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Adaptive attacker variant} & \textbf{ASR (full)} & \textbf{Poison retr.} & \textbf{Filter TPR} & \textbf{Accuracy} & \textbf{ASR (HMAC)}\\
+\midrule
+All six techniques enabled & 0.83 \tiny[0.82,0.84] & 1.00 & 0.00 & 0.05 & 0.01\\
+$-$ Query paraphrase & 0.00 \tiny[0.00,0.01] & 1.00 & 0.15 & 0.43 & 0.01\\
+$-$ Assertive (non-imperative) payload & 0.01 \tiny[0.01,0.01] & 0.91 & 1.00 & 0.51 & 0.01\\
+$-$ Natural prose padding & 0.83 \tiny[0.82,0.84] & 1.00 & 0.00 & 0.05 & 0.01\\
+$-$ Similarity dilution & 0.83 \tiny[0.82,0.84] & 1.00 & 0.00 & 0.05 & 0.01\\
+$-$ Provenance spoofing & 0.01 \tiny[0.01,0.01] & 0.00 & n/a & 0.51 & 0.01\\
+$-$ Corroboration across documents & 0.83 \tiny[0.82,0.84] & 1.00 & 0.00 & 0.05 & 0.01\\
+\bottomrule
+\end{tabular}
+\end{adjustwidth}
+\end{table*}

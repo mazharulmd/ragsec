@@ -1,7 +1,7 @@
 """Evaluation harness: datasets, metrics and the experiment runner."""
 
 from ragsec.eval.data import Dataset, QAExample, load_dataset, load_toy_dataset
-from ragsec.eval.metrics import MetricSummary, QueryRecord, answer_matches, summarize
+from ragsec.eval.metrics import MetricSummary, QueryRecord, answer_matches, summarize, token_f1
 from ragsec.eval.runner import (
     DEFENSE_REGISTRY,
     ExperimentConfig,
@@ -28,4 +28,5 @@ __all__ = [
     "load_dataset",
     "load_toy_dataset",
     "summarize",
+    "token_f1",
 ]

@@ -14,6 +14,7 @@ from ragsec.eval import (
     answer_matches,
     load_toy_dataset,
     summarize,
+    token_f1,
 )
 
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
@@ -36,6 +37,13 @@ def test_answer_matches_normalises() -> None:
     assert answer_matches("299,792 kilometres per second", "about 299 792 kilometres per second")
     assert not answer_matches("Paris", "Berlin is the capital.")
     assert not answer_matches("", "anything")
+
+
+def test_token_f1_uses_squad_normalization() -> None:
+    assert token_f1("The capital of France", "capital of France") == 1.0
+    assert token_f1("Berlin", "The answer is Berlin.") == pytest.approx(0.5)
+    assert token_f1("Paris", "Berlin") == 0.0
+    assert token_f1("", "") == 1.0
 
 
 def _record(**overrides) -> QueryRecord:

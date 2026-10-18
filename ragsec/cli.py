@@ -164,7 +164,7 @@ def cmd_suite(args: argparse.Namespace) -> int:
 
 
 def cmd_figures(args: argparse.Namespace) -> int:
-    from ragsec.eval.report import build_report
+    from ragsec.eval.report import build_report, verify_macros
     from ragsec.eval.texcheck import check_manuscript
 
     output_dir = Path(args.output_dir)
@@ -185,9 +185,12 @@ def cmd_figures(args: argparse.Namespace) -> int:
     if args.strict:
         for warning in report.warnings:
             print(f"  manuscript (minor): {warning}")
+    missing_macros = verify_macros(Path(args.manuscript), output_dir / "tables" / "macros.tex")
+    for macro in missing_macros:
+        print(f"  manuscript: undefined result macro \\{macro}")
     # A partially-run suite legitimately leaves tables and figures missing, so this reports
     # rather than fails unless the caller asked for strictness.
-    return 1 if (args.strict and report.problems) else 0
+    return 1 if (args.strict and (report.problems or missing_macros)) else 0
 
 
 def cmd_manuscript(args: argparse.Namespace) -> int:
