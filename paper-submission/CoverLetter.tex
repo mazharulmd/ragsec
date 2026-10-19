@@ -1,0 +1,93 @@
+%% Cover letter for Expert Systems with Applications.
+%% The journal requires one for every manuscript, and for a research article it must set out
+%% the novel contribution the paper makes to the published literature.
+
+\documentclass[12pt]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[colorlinks=true,urlcolor=blue,linkcolor=blue]{hyperref}
+\pagestyle{empty}
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+\noindent The Editors\\
+\emph{Expert Systems with Applications}
+
+\bigskip
+
+\noindent Dear Editors,
+
+We submit for your consideration our manuscript, \emph{Defending retrieval-augmented
+generation against knowledge-base poisoning}, as a Research Article.
+
+\textbf{Novel contribution to the published literature.}
+Retrieval-augmented generation places an external document store inside a language model's
+trust boundary. The published defenses against poisoning of that store fall into two families:
+aggregation schemes that tolerate a bounded minority of corrupted passages, and provenance
+schemes that authenticate who may write. Our work makes three contributions that are, to our
+knowledge, new.
+
+First, we show that the protection reported for authenticated ingestion is an artefact of its
+threat model rather than of authentication. Existing evaluations assume every holder of a valid
+signing key is honest. We extend the adversary model with an authorised but compromised
+publisher, whose documents verify by construction and which ingestion control therefore cannot
+exclude. Under that adversary, attack-attributable success against an adaptive poisoning
+campaign rises from 0.00 to 0.82 on SQuAD and from 0.01 to 0.83 on HotpotQA at matched
+budgets. This result applies to our own best-performing configuration, not only to prior work.
+
+Second, we identify the unit of corroboration as the remaining exploitable primitive and
+propose a defense. Aggregation schemes credit agreement across distinct document identifiers,
+and identifiers are chosen by whoever submits the document, so an adversary purchases apparent
+consensus with uploads alone. We count agreement over provenance independence classes derived
+only from forgery-resistant attributes, and we modify ingestion to record which key actually
+verified a document so that proved origin is distinguishable from asserted origin. The rule
+requires no retraining and no additional retrieval, and it lowers attributable success from
+0.83 to 0.59 on SQuAD at five injected documents per target with clean accuracy unchanged.
+
+Third, we bound when corroboration-based defense can work at all. The benefit is absent against
+single-document attacks, which fabricate no corroboration to discount, and it narrows at high
+budgets where poison displaces genuine evidence during retrieval before aggregation is reached.
+A publisher-diversity control shows the gain comes from bounding one party's contribution
+rather than from honest evidence gaining corroboration. On two locally served models the
+direction is consistent and no case regressed, but the effect is small and we report it as
+unconfirmed rather than established.
+
+\textbf{Fit with the journal.}
+The work concerns the design, testing and practical management of an intelligent
+information-retrieval system, and it yields deployment guidance: authenticate publishers, count
+corroboration over parties whose identity has been proved rather than over submitter-chosen
+identifiers, and pair both with retrieval-stage limits on how much of a candidate set any one
+party may occupy.
+
+\textbf{Reproducibility.}
+All code, configurations, seeds, model revisions and per-query outcomes are released publicly.
+The repository address is withheld in the anonymized manuscript and will be supplied on
+acceptance.
+
+\textbf{Institutional e-mail addresses.}
+% ACTION REQUIRED: the journal mandates an institutional address for every author, and the
+% reason below must be the true one. Replace this paragraph if an institutional address exists.
+Institutional e-mail addresses are provided for the first and third authors. The second author
+is not currently affiliated with an institution that issues her an active e-mail account, and a
+personal address is therefore given for her in the title page and the submission system.
+
+\textbf{Declarations.}
+This manuscript is original, has not been published previously, and is not under consideration
+elsewhere. It has not previously been submitted to or rejected by \emph{Expert Systems with
+Applications}. All authors have approved the submission and will confirm approval through the
+link the system sends them. The authors declare no competing interests, and the research
+received no specific grant.
+
+\bigskip
+
+\noindent Yours sincerely,
+
+\medskip
+
+\noindent Md Mazharul Islam, on behalf of all authors\\
+Department of Electrical and Computer Engineering, North South University\\
+Dhaka 1229, Bangladesh\\
+\href{mailto:mazharul.islam1@northsouth.edu}{mazharul.islam1@northsouth.edu}
+
+\end{document}
