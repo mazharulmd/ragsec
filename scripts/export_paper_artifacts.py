@@ -16,8 +16,10 @@ from ragsec.eval.metrics import token_f1
 
 QUERY_FIELDS = (
     "record_type",
+    "study",
     "dataset",
     "config",
+    "model",
     "seed",
     "attack",
     "attacked",
@@ -27,11 +29,21 @@ QUERY_FIELDS = (
 )
 
 
-def export_query_outcomes(source: Path, destination: Path) -> int:
-    sidecars = source / "main_query_records"
+def export_query_outcomes(
+    source: Path,
+    destination: Path,
+    additional_sources: tuple[Path, ...] = (),
+) -> int:
+    roots = dict.fromkeys(path.resolve() for path in (source, *additional_sources))
+    sidecars = sorted({
+        path
+        for root in roots
+        for directory in root.glob("*_query_records")
+        for path in directory.glob("*.jsonl")
+    })
     output = destination / "query_outcomes.jsonl.gz"
-    questions_by_dataset: dict[str, set[str]] = defaultdict(set)
-    for path in sorted(sidecars.glob("*.jsonl")):
+    questions_by_dataset: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for path in sidecars:
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 if not line.strip():
@@ -39,16 +51,17 @@ def export_query_outcomes(source: Path, destination: Path) -> int:
                 row: dict[str, Any] = json.loads(line)
                 question = row.get("question")
                 if row.get("record_type") == "query_outcome" and question:
-                    questions_by_dataset[str(row.get("dataset", ""))].add(str(question))
+                    group = (str(row.get("dataset", "")), str(row.get("model", "")))
+                    questions_by_dataset[group].add(str(question))
     cluster_order = {
-        dataset: {question: index for index, question in enumerate(sorted(questions))}
-        for dataset, questions in questions_by_dataset.items()
+        group: {question: index for index, question in enumerate(sorted(questions))}
+        for group, questions in questions_by_dataset.items()
     }
     count = 0
     with output.open("wb") as raw, gzip.GzipFile(
         filename="", mode="wb", fileobj=raw, mtime=0
     ) as compressed:
-        for path in sorted(sidecars.glob("*.jsonl")):
+        for path in sidecars:
             with path.open("r", encoding="utf-8") as handle:
                 for line in handle:
                     if not line.strip():
@@ -67,8 +80,9 @@ def export_query_outcomes(source: Path, destination: Path) -> int:
                     public_row["question_cluster_id"] = hashlib.sha256(
                         str(question).encode("utf-8")
                     ).hexdigest()
+                    group = (str(row.get("dataset", "")), str(row.get("model", "")))
                     public_row["question_cluster_order"] = cluster_order[
-                        str(row.get("dataset", ""))
+                        group
                     ][str(question)]
                     compressed.write(
                         (json.dumps(public_row, sort_keys=True, separators=(",", ":")) + "\n")
@@ -79,11 +93,43 @@ def export_query_outcomes(source: Path, destination: Path) -> int:
 
 
 def source_manifest(source: Path) -> dict[str, Any]:
-    candidates = [source.parent / "paper-rerun-manifest.json", source / "run_manifest.json"]
-    manifest_path = next((path for path in candidates if path.exists()), None)
-    if manifest_path is None:
-        return {}
-    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    result_identities: dict[str, set[str]] = defaultdict(set)
+    for result_path in source.glob("*.jsonl"):
+        with result_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                for key in ("code_fingerprint", "runtime_fingerprint"):
+                    if row.get(key):
+                        result_identities[key].add(str(row[key]))
+    result_identity = {
+        key: next(iter(values))
+        for key, values in result_identities.items()
+        if len(values) == 1
+    }
+
+    # Prefer a manifest inside the exact results directory. A parent-level manifest may
+    # describe a previous run when several named sweeps share the same results/ directory.
+    candidates = [source / "run_manifest.json", source.parent / "paper-rerun-manifest.json"]
+    raw = None
+    for manifest_path in candidates:
+        if not manifest_path.exists():
+            continue
+        candidate = json.loads(manifest_path.read_text(encoding="utf-8"))
+        identity = candidate.get("experiment_identity", {})
+        if any(
+            result_identity.get(key) != identity.get(key)
+            for key in ("code_fingerprint", "runtime_fingerprint")
+            if key in result_identity and key in identity
+        ):
+            continue
+        raw = candidate
+        break
+    if raw is None:
+        # Result rows remain the authoritative source for these identities even when no
+        # matching run manifest was saved alongside them.
+        return {"experiment_identity": result_identity} if result_identity else {}
     environment = raw.get("environment", {})
     identity = raw.get("experiment_identity", {})
     local = raw.get("local_real_model_confirmation", {})
@@ -94,9 +140,9 @@ def source_manifest(source: Path) -> dict[str, Any]:
             if key in raw
         },
         "experiment_identity": {
-            key: identity[key]
+            key: result_identity.get(key, identity.get(key))
             for key in ("code_fingerprint", "runtime_fingerprint")
-            if key in identity
+            if result_identity.get(key, identity.get(key)) is not None
         },
         "environment": {
             key: environment[key]
@@ -164,13 +210,14 @@ def main() -> int:
                     str(row.get("dataset_split") or ""),
                 ))
             study_rows[path.stem] = count
-    count = export_query_outcomes(args.results_dir, args.output_dir)
+    local_query_sources = (args.local_model_dir,) if args.local_model_dir else ()
+    count = export_query_outcomes(args.results_dir, args.output_dir, local_query_sources)
 
     local_model_files: list[str] = []
     if args.local_model_dir:
         local_destination = args.output_dir / "local_model"
         local_destination.mkdir(exist_ok=True)
-        for name in ("confirmation.jsonl", "summary.json"):
+        for name in ("confirmation.jsonl", "summary.json", "confirmation-printed-summary.txt"):
             source = args.local_model_dir / name
             if source.exists():
                 shutil.copy2(source, local_destination / name)
@@ -206,6 +253,33 @@ def main() -> int:
         "local_model_outputs": local_model_files,
         **source_manifest(args.results_dir),
     }
+    local_summary_path = (
+        args.local_model_dir / "summary.json" if args.local_model_dir else None
+    )
+    if local_summary_path is not None and local_summary_path.exists():
+        local_summary = json.loads(local_summary_path.read_text(encoding="utf-8"))
+        local_meta = local_summary.get("metadata", {})
+        manifest["local_model_metadata"] = {
+            "dataset": local_meta.get("dataset"),
+            "dataset_revision": local_meta.get("dataset_revision"),
+            "split": local_meta.get("split"),
+            "queries_per_config": local_meta.get("queries_per_configuration"),
+            "seed": local_meta.get("seed"),
+            "code_fingerprint": local_meta.get("code_fingerprint"),
+            "runtime_fingerprint": local_meta.get("runtime_fingerprint"),
+            "embedding_revision": local_meta.get("embedding_revision"),
+            "models": [{"name": name} for name in local_meta.get("models", [])],
+            "decoding": local_meta.get("decoding", {}),
+            "provenance": local_meta.get("source"),
+            "interpretation_limits": [
+                "The output is aggregate-only; no query-level paired intervals can be computed.",
+                "The confirmation uses 100 fixed SQuAD questions and one seed per "
+                "model/configuration.",
+                "Model identity is recorded by the Ollama tag; model digest and server "
+                "version were not included in the supplied summary.",
+                "Cached decoding makes latency incomparable.",
+            ],
+        }
     (args.output_dir / "artifact_manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )

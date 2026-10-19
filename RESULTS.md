@@ -44,14 +44,17 @@ multi-hop, which is exactly why the attributable rate is needed.
 | No defense | 0.95 | 0.62 |
 | L1 source verification | 0.00 | 0.62 |
 | L2 retrieval filtering | 0.01 | 0.61 |
-| L3 robust aggregation | 0.68 | 0.52 |
+| L3 robust aggregation | 0.87 | 0.52 |
 | L4 monitoring | 0.95 | 0.62 |
 | Full defense | 0.00 | 0.51 |
 
 L1 and L2 each independently neutralise the published attack constructions, by different
-mechanisms: L1 rejects the poison before indexing, L2 removes it from the candidate set. L3
-defeats prompt injection completely but not targeted poisoning, and carries the largest utility
-cost. L4 changes nothing by construction — it alerted under every attack, which is what a
+mechanisms: L1 rejects the poison before indexing, L2 removes it from the candidate set. L3 does
+not defeat prompt injection: its isolated call still sees the directive, and the corrected
+per-passage relevance rule gives highly query-matching passages substantial weight. Prompt
+injection's attributable ASR under L3 is 0.80 on SQuAD and 0.81 on HotpotQA. L3 also carries the
+largest individual utility cost, including a 0.26 clean-query abstention rate on SQuAD. L4
+changes no answers by construction — it alerted under every attack, which is what a
 detective control does.
 
 Context flooding under the full defense shows raw ASR 0.49 on SQuAD but **attributable ASR
@@ -65,9 +68,9 @@ deployment already trusts.
 
 | Configuration | Adaptive ASR (attributable) | SQuAD | HotpotQA | Toy |
 |---|---|---:|---:|---:|
-| No defense | | 0.83 | 0.97 | 0.41 |
-| L3 robust aggregation | | 0.88 | 0.98 | 1.00 |
-| Full defense | | 0.85 | 0.91 | 0.95 |
+| No defense | | 0.83 | 0.97 | 0.46 |
+| L3 robust aggregation | | 0.85 | 0.92 | 1.00 |
+| Full defense | | 0.82 | 0.83 | 0.94 |
 | **Full defense + signed ingestion** | | **0.01** | **0.00** | **0.00** |
 
 Two things stand out.
@@ -76,11 +79,11 @@ Two things stand out.
 — zero. Its ROC lies on the chance diagonal, so no choice of operating point recovers it, even
 though the same filter is near-separable against every static attack.
 
-**Robust aggregation makes things worse.** On every corpus, enabling L3 *raised* adaptive attack
-success relative to the undefended pipeline. The adversary uploads several textually distinct
-documents making the same claim, so the redundancy bonus that rewards corroboration rewards the
-adversary. On the toy corpus the effect is starkest (0.41 → 1.00), because the true answer is
-supported by exactly one document and the adversary supplies three.
+**Robust aggregation is corpus-dependent.** L3 raises attributable adaptive success on SQuAD
+(0.83 → 0.85) and the toy corpus (0.46 → 1.00), but lowers it on HotpotQA (0.97 → 0.92). The
+adversary uploads several textually distinct documents making the same claim, so the redundancy
+bonus can reward its answer group. The strongest amplification appears on the toy corpus, where
+the true answer is supported by one document and the adversary supplies three.
 
 ## 4. Only three of six evasion techniques are load-bearing
 

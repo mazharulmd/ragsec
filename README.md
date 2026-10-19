@@ -115,10 +115,14 @@ The committed records in `results/paper/` predate dataset revision tracking. New
 Hub revisions and a separate output directory, so they cannot be mixed with those archived
 records. The SQuAD and HotpotQA commit IDs are recorded in `ragsec/eval/suite.py` and copied
 into every new result row. Main-study per-question outcomes are written under
-`results/paper-metric-aligned/main_query_records/`; the export step retains hashed cluster IDs, attack
-outcomes, and target token-F1 scores for the bootstrap while omitting question and answer text. The report writes its query
-intervals to `paper-submission/query_uncertainty.json`; they are conditional on the included
-experiment seeds.
+`results/paper-metric-aligned/main_query_records/`; confirmation outcomes are written under the
+corresponding `confirmation_query_records/` directory. The export step retains hashed cluster
+IDs, study/model labels, attack outcomes, and target token-F1 scores while omitting question and
+answer text. The report writes main-study intervals to `paper-submission/query_uncertainty.json`
+local marginal intervals to `paper-submission/local_model/query_uncertainty.json`, and paired
+full-versus-none comparisons to `paper-submission/local_model/paired_uncertainty.json`; these
+are conditional on the included experiment seeds. Use a fresh output directory for the
+confirmation rerun after updating the code.
 
 `ragsec suite` runs eight offline studies by default. A ninth, real-model confirmation study is
 opt-in because it calls a model endpoint; each study writes one JSONL file and can be run alone:
@@ -267,15 +271,16 @@ The MDPI-formatted version and its compiled PDF are in the git history at commit
 
 Tables, figures, and aggregate-result macros in the manuscript are regenerated from the compact
 artifact bundle. The local-model confirmation table is derived from its included aggregate
-JSONL output. Query-level bootstrap records contain hashes rather than source question text and
-retain target token-F1 scores as a graded sensitivity measure.
+JSONL output. A confirmation rerun with the current suite also saves per-question outcomes for
+paired full-versus-none bootstrap intervals. Public query-level artifacts contain hashes rather
+than question text and retain target token-F1 scores as a graded sensitivity measure.
 
 ```
 results/paper/*.jsonl                     archived raw result records, predating revision tracking
 results/paper-metric-aligned/             pinned run outputs (local; raw query text included)
 paper-submission/artifacts/*.jsonl        aggregate experiment results
 paper-submission/artifacts/query_outcomes.jsonl.gz
-                                          hashed, per-query outcomes for cluster intervals
+                                          hashed per-query outcomes for main and local intervals
 paper-submission/tables/                  generated LaTeX fragments and result macros
 paper-submission/figures/                 generated PDF figures
 ```

@@ -97,9 +97,14 @@ does not reduce adaptive attack-attributable success on SQuAD: it is
 \casrAdaptiveSquadfullsigned{} (\casrCIAdaptiveSquadFullsignedLow{}--
 \casrCIAdaptiveSquadFullsignedHigh{}), under the explicit assumption that the attacker cannot
 obtain a valid tag from an authorized publisher; clean accuracy is \cleanAccSquadfullsigned{}
-versus \cleanAccSquadnone{} without defense. A small follow-up on two quantized local models
-shows a weaker full-stack reduction and a substantial clean-accuracy cost, while authenticated
-ingestion lowers measured attack success further. The contribution is a reproducible,
+versus \cleanAccSquadnone{} without defense. In a 100-question local confirmation, the full
+content-based stack lowers raw adaptive ASR from 0.38 to 0.29 on Qwen2.5 7B and from 0.33 to
+0.21 on Llama 3.1 8B, with clean accuracy changing from 0.77 to 0.73 and remaining 0.76,
+respectively. Clean abstention changes from 0.15 to 0.17 on Qwen and from 0.18 to 0.19 on
+Llama. Raw and attributable ASR Wilson intervals overlap in both models, so these one-seed
+observations are directional.
+Authenticated ingestion yields zero measured ASR under the protected-publisher assumption.
+The contribution is a reproducible,
 component-level security--utility evaluation of this configuration. It does not introduce a new
 defense or benchmark, and it does not establish a general robustness guarantee or
 enterprise-scale result.
@@ -147,7 +152,7 @@ defenses~\citep{mohanty2026trishield,choudhary2026stealth}. We therefore do not 
 adaptive evaluation, a new attack family, or a generally effective defense. A remaining
 practical question is how individual controls in a single, reproducible pipeline affect attack
 success, clean utility, abstention, and latency under one fixed attacker, and how those findings
-change when the generator is replaced by small local language models.
+change when the generator is replaced by locally served language models.
 
 We address that question with \texttt{RAGSec}, an instrumented RAG pipeline in which source
 verification, retrieval filtering, answer aggregation, and monitoring can be toggled
@@ -159,9 +164,12 @@ answered correctly in a clean run, alongside clean accuracy and abstention.
 
 In the pinned mock-generator study, the four-layer stack does not materially reduce the
 adaptive attack's attributable success, while the same stack with HMAC-authenticated ingestion
-rejects injected documents under a protected-publisher assumption. A small local-model follow-up
-shows that the full stack's security--utility trade-off is less favorable than the mock study
-suggests. The result is evidence about these implementations and settings; it is not a claim
+rejects injected documents under a protected-publisher assumption. In a 100-question local
+confirmation, the full content-based stack lowers raw adaptive ASR from 0.38 to 0.29 on Qwen2.5
+7B and from 0.33 to 0.21 on Llama 3.1 8B, while clean accuracy changes from 0.77 to 0.73 and
+remains 0.76, respectively. The raw and attributable ASR Wilson intervals overlap in both models,
+so these one-seed results are directional rather than evidence of a reliable reduction. The result is evidence
+about these implementations and settings; it is not a claim
 that all content filters fail, that aggregation always amplifies poisoning, or that HMAC
 authentication solves malicious-authorized-publisher risk.
 
@@ -178,8 +186,9 @@ Specifically, we provide:
           and latency (Section~\ref{sec:metrics});
     \item Question-cluster bootstrap intervals for the pinned main study, conditional on its
           three seeds (Section~\ref{sec:metrics}); and
-    \item A limited two-model local-generator confirmation that indicates a security--utility
-          trade-off requiring broader validation (Section~\ref{sec:results}).
+    \item A seven-configuration confirmation on two locally served models, showing mixed
+          component effects and modest full-stack changes that require broader validation
+          (Section~\ref{sec:results}).
 \end{itemize}
 
 The remainder of this paper is organized as follows. Section~\ref{sec:related} reviews
@@ -796,20 +805,17 @@ repeatable, but the mock's susceptibility can exaggerate real attack success; th
 not evidence of model-independent behavior. Section~\ref{sec:res:generator} reports the mock
 with instruction-following disabled.
 
-We also ran a limited real-generator confirmation on SQuAD using Qwen2.5 0.5B
-Instruct~\citep{qwen25modelcard} and Llama 3.2 1B Instruct~\citep{llama32modelcard}, both
-quantized to GGUF Q4\_K\_M and served locally through an
-OpenAI-compatible API. Each model was evaluated on 100 questions, one seed, four defense
-configurations (none, L2, full, and full with HMAC-authenticated ingestion), and three attacks
-(PoisonedRAG, prompt injection, and adaptive poisoning). Decoding used temperature 0 and a
-128-token maximum. Both servers used two CPU threads, a 4096-token context, and logical/physical
-batch sizes of 512/128. Completions were cached and reused across configurations; cache identity
-includes the endpoint, model, temperature, token limit, system message, and prompt. The artifact
-manifest records model weight hashes, quantization, local inference-server version, and decoding
-settings. No hosted model endpoint was used. Because confirmation records are aggregate-only and
-cache-heavy, we do not use
-them for query-cluster inference or comparative latency claims. The measured timing is
-cache-dependent.
+We ran a local-generator confirmation on SQuAD using the Ollama model tags
+\texttt{qwen2.5:7b}~\citep{qwen257bmodelcard} and
+\texttt{llama3.1:8b}~\citep{llama318bmodelcard}, served through Ollama's OpenAI-compatible
+endpoint on a 16-OCPU, 32-GB OCI instance. Each model was evaluated on 100 validation questions,
+one seed, all seven configurations (none, L1--L4, full, and full with HMAC-authenticated
+ingestion), and three attacks (PoisonedRAG, prompt injection, and adaptive poisoning), together
+with a clean run for each configuration. Decoding used temperature 0 and a 128-token maximum.
+Completions were cached across configurations. No hosted model endpoint was used. Confirmation
+records are aggregate-only, so their Wilson intervals do not account for paired query or seed
+variation; cached generation also makes latency comparisons unsuitable. We identify the local
+models by the Ollama tags used for this run.
 
 \subsection{Metrics}
 \label{sec:metrics}
@@ -918,13 +924,14 @@ the poison before it is indexed, so it is never retrieved, whereas Layer~2 admit
 index and removes it from the candidate set.
 
 Robust aggregation alone is markedly weaker, leaving \casrStaticSquadLThree{} of static attacks
-successful. Its isolate-then-aggregate design defeats prompt injection completely, because an
-injected directive that reaches only one isolated generation cannot outvote the passages around
-it. It does not defeat targeted poisoning, where the poisoned passage is the most query-relevant
-evidence in the candidate set and therefore wins the weighted vote on its own merits. It also
-carries the largest utility cost of any single layer: clean accuracy falls from
-\cleanAccSquadnone{} to \cleanAccSquadLThree{} on SQuAD, because on queries where the evidence is
-genuinely split the layer abstains rather than guessing.
+successful. Isolating passages prevents one passage from changing the generation over other
+passages, but it does not make the generator ignore instructions inside the isolated passage:
+the attack-specific results show substantial prompt-injection success under L3 alone
+(Table~\ref{tab:main}). L3 also leaves targeted poisoning largely effective when the poisoned
+passage is among the most query-relevant candidates. It carries the largest clean-accuracy cost
+of any individual layer: accuracy falls from \cleanAccSquadnone{} to \cleanAccSquadLThree{} on
+SQuAD, with the answer-group margin and minimum-weight rules causing additional abstentions
+(Table~\ref{tab:utility}).
 
 By construction, monitoring alone does not change attack success at all (\casrStaticSquadLFour{}); it
 raised alerts under every attack, which is what a detective control is for, but the ablation
@@ -958,22 +965,23 @@ and use the attributable rate whenever a suppression adversary is involved.
 \label{sec:res:adaptive}
 
 On SQuAD, the adaptive attack's attributable success rate is \casrAdaptiveSquadnone{} against
-the undefended pipeline and \casrAdaptiveSquadfull{} against the full four-layer stack. Under
-this fixed manual campaign, the full stack therefore does not reduce attributable success.
+the undefended pipeline and \casrAdaptiveSquadfull{} against the full four-layer stack. The
+change is small on SQuAD and varies by corpus: the full stack lowers attributable success on
+HotpotQA, while it raises it on the toy corpus. Under this fixed manual campaign, the stack does
+not provide a consistent adaptive-attack reduction across datasets.
 The filter's true-positive rate is zero at its default threshold (Table~\ref{tab:full}), while
 it detects most of the tested static constructions (Section~\ref{sec:res:detection}). This
 contrast describes the tested payloads and detector features; it does not estimate performance
 against all adaptive attacks.
 
-Layer~3 does not reduce the attack in this implementation. The adversary uploads several
-documents with distinct identifiers that make the same claim; the aggregator applies its
-redundancy bonus to that answer group. These identifiers do not prove independent publishers
-or independent corroboration. Enabling robust aggregation \emph{raises} attributable adaptive
-success relative to no defense in these runs: from \casrAdaptiveSquadnone{} to
-\casrAdaptiveSquadLThree{} on SQuAD, from \casrAdaptiveHotpotqanone{} to \casrAdaptiveHotpotqaLThree{}
-on HotpotQA, and from \casrAdaptiveToynone{} to \casrAdaptiveToyLThree{} on the toy corpus. This
-is a failure mode of the tested weighting rule, attacker, and corpus construction; it does not
-show that every consistency-based or isolate-then-aggregate defense will amplify poisoning.
+Layer~3 has corpus-dependent adaptive results. The adversary uploads several documents with
+distinct identifiers that make the same claim; the aggregator applies its redundancy bonus to
+that answer group. These identifiers do not prove independent publishers or independent
+corroboration. Enabling robust aggregation raises attributable adaptive success on SQuAD and
+the toy corpus, while it lowers the rate on HotpotQA; the toy-corpus increase is the largest
+failure case. This pattern is specific to the tested weighting rule, attacker, and corpus
+construction; it does not show that every consistency-based or isolate-then-aggregate defense
+will amplify poisoning.
 
 HMAC-authenticated ingestion blocks the tested upload campaign. With Layer~1 requiring a valid
 tag over the versioned envelope containing the document identifier, source identifier, and text,
@@ -1242,28 +1250,32 @@ the five attacks in this study and leave the knowledge-integrity problem untouch
 
 \subsection{Local-Generator Confirmation}
 
-The local-model confirmation does not reproduce the full factorial; it checks the adaptive
-attack on 100 SQuAD questions per configuration for two small quantized models. Table~\ref{tab:local-model}
-shows that the full content-based stack reduces raw adaptive ASR from
-\localAsrQwenNone{} to \localAsrQwenFull{} on Qwen2.5 0.5B and from
-\localAsrLlamaNone{} to \localAsrLlamaFull{} on Llama 3.2 1B. The corresponding clean accuracy
-falls from \localCleanAccQwenNone{} to \localCleanAccQwenFull{} and from
-\localCleanAccLlamaNone{} to \localCleanAccLlamaFull{}. Thus, this confirmation supports a
-limited directional finding
-that filtering and aggregation can reduce attack success on these models, while revealing a
-large utility cost; it does not support the stronger claim that content defenses have no effect.
-The L2-only condition leaves adaptive ASR at \localAsrQwenLTwo{} on Qwen2.5 and
-\localAsrLlamaLTwo{} on Llama 3.2, close to their undefended values in this sample.
+Table~\ref{tab:local-model} reports the seven-configuration confirmation on 100 SQuAD questions
+for each of two locally served models. The full content-based stack lowers raw adaptive ASR from
+0.38 to 0.29 on Qwen2.5 7B and from 0.33 to 0.21 on Llama 3.1 8B. Attributable ASR changes
+from 0.31 to 0.27 and from 0.36 to 0.22, respectively. Clean accuracy changes from 0.77 to
+0.73 on Qwen and remains 0.76 on Llama; clean abstention rises from 0.15 to 0.17 and from
+0.18 to 0.19, respectively. The confidence intervals for the undefended and full
+conditions overlap for both models and both attack-rate measures; the aggregate-only results
+therefore support a directional observation, not a confirmed model-level reduction.
 
-HMAC-authenticated ingestion lowers adaptive ASR to \localAsrQwenFullSigned{} and
-\localAsrLlamaFullSigned{}, respectively, under the same
-protected-publisher assumption used in the mock study. The Wilson intervals are wide, especially
-for attributable ASR because only the queries answered correctly in the clean run enter its
-denominator. These 100-question, one-seed results are exploratory and should not be read as
-population-level model estimates. Cached decoding makes latency incomparable, and this
-confirmation did not evaluate hosted commercial models.
+The individual components show different behavior. L1 and L2 reduce the two static attack ASRs
+to zero in this sample while leaving adaptive ASR near the undefended rates. L3 alone has
+mixed adaptive results: raw ASR falls from 0.33 to 0.24 on Llama but only from 0.38 to 0.34 on
+Qwen, while Qwen's attributable rate rises slightly from 0.31 to 0.33. L3 also increases
+prompt-injection ASR relative to no defense on both models (0.30 to 0.36 on Llama; 0.13 to
+0.37 on Qwen). Thus, its effect is not consistently protective across attack types or models.
+The full-signed condition yields zero measured ASR for all three attacks in both 100-question
+runs, under the protected-publisher assumption that the attacker cannot obtain a valid tag.
+
+These are one-seed, fixed-sample observations. Wilson intervals are wide and overlap for the
+main content-only adaptive comparison; because the confirmation output contains aggregate rows
+only, we cannot compute a paired question-level interval. The results do not establish
+population-level model behavior, and cached decoding makes latency incomparable. No hosted
+commercial model was evaluated.
 
 \input{tables/tab_local_model.tex}
+\IfFileExists{tables/tab_local_paired.tex}{\input{tables/tab_local_paired.tex}}{}
 
 \section{Discussion}
 \label{sec:discussion}
@@ -1285,12 +1297,14 @@ content-based detector is only useful for monitoring or that a different feature
 help. Layer~4 is observational in this implementation and therefore raises alerts without
 changing the answer.
 
-Layer~3 reduces some static attack outcomes and can abstain when its answer groups are close,
-but it also imposes the largest clean-accuracy cost among individual layers. Under the adaptive
-campaign, distinct document identifiers allow the attacker to increase the score of its answer
-group. Since the implementation does not verify independent source lineage, the experiment
-does not evaluate genuine independent corroboration. The observed failure should be read as a
-property of this weighting rule and threat model, not as a result about every answer aggregator.
+Layer~3 reduces some static attack outcomes but does not prevent prompt injection by itself:
+instructions in an isolated passage can still shape that passage's answer. Its answer-group
+margin causes abstention when competing groups have similar weight, producing the largest
+clean-accuracy cost among individual layers. Under the adaptive campaign, distinct document
+identifiers can increase the attacker's answer-group score. Since the implementation does not
+verify independent source lineage, the experiment does not evaluate genuine independent
+corroboration. These outcomes are specific to this weighting rule and threat model, not to every
+answer aggregator.
 
 \subsection{Operational Implications}
 
@@ -1317,11 +1331,14 @@ follow-up. Because the prior systems were not reimplemented, all comparisons rem
 \label{sec:limitations}
 
 The main factorial uses a deterministic mock generator. The local-model follow-up covers only
-Qwen2.5 0.5B and Llama 3.2 1B in Q4\_K\_M quantization, 100 SQuAD questions per configuration,
-and one seed. It reduces adaptive ASR under the full stack, alongside large clean-accuracy losses.
-The aggregate-only records do not support query-cluster intervals or latency comparisons. No
-hosted commercial-model run was possible without a provider credential. These exploratory results
-do not establish behavior for larger or hosted models.
+the Ollama tags Qwen2.5 7B and Llama 3.1 8B, 100 SQuAD questions per configuration, and one
+seed. The full content-based stack produces modest observed adaptive-ASR reductions, with
+overlapping Wilson intervals, a four-point clean-accuracy decrease on Qwen, and one- to two-point
+increases in clean abstention. Aggregate-only records do not support paired query-level intervals
+or comparative latency claims. The local confirmation does not test hosted models or establish behavior across
+model versions, quantizations, or decoding settings. The supplied run summary records the
+Ollama tags but not model digests, quantization metadata, or the Ollama server version, so the
+exact served model builds cannot yet be independently pinned.
 
 The evaluated corpora contain 30 to 1,999 documents, and the main experiments use one
 sentence-transformer retriever with exact inner-product search. We did not evaluate production
@@ -1353,10 +1370,12 @@ and network overhead; local-model timings are cache-dependent and are not interp
 This paper reports a controlled component-level evaluation of a four-layer RAG pipeline on
 three small corpora. On the pinned SQuAD mock-generator study, the full stack leaves adaptive
 attributable attack success close to the undefended pipeline, while HMAC-authenticated ingestion
-reduces it to \casrAdaptiveSquadfullsigned{} under the protected-publisher assumption. In a
-limited local-model follow-up, the full stack reduces raw adaptive ASR on both models but at a
-substantial clean-accuracy cost; authenticated ingestion lowers measured ASR further on those
-100-question runs (Table~\ref{tab:local-model}).
+reduces it to \casrAdaptiveSquadfullsigned{} under the protected-publisher assumption. In the
+one-seed local confirmation, the full content-based stack lowers observed raw adaptive ASR from
+0.38 to 0.29 on Qwen2.5 7B and from 0.33 to 0.21 on Llama 3.1 8B, with overlapping Wilson
+intervals, little change in clean accuracy, and one- to two-point increases in clean abstention.
+Authenticated ingestion yields zero measured ASR
+in these 100-question runs under the protected-publisher assumption (Table~\ref{tab:local-model}).
 
 These findings do not establish a generally effective RAG defense, enterprise-scale behavior,
 or novelty over existing adaptive RAG studies. They show that, in the tested configuration,

@@ -50,8 +50,10 @@
     "cluster_order": "Zero-based order after sorting distinct exact question strings within dataset; retains the original bootstrap draw order.",
     "included_fields": [
       "record_type",
+      "study",
       "dataset",
       "config",
+      "model",
       "seed",
       "attack",
       "attacked",
@@ -70,8 +72,8 @@
     ]
   },
   "local_model_outputs": [
-    "local_model/confirmation.jsonl",
-    "local_model/summary.json"
+    "local_model/summary.json",
+    "local_model/confirmation-printed-summary.txt"
   ],
   "run_metadata": {
     "created_utc": "2026-10-18T08:57:22Z",
@@ -101,36 +103,28 @@
     "split": "validation",
     "queries_per_config": 100,
     "seed": 0,
-    "decoding": {
-      "cache_enabled": true,
-      "max_tokens": 128,
-      "temperature": 0.0
-    },
-    "server": {
-      "implementation": "llama.cpp llama-server",
-      "version": "0.7.0-dev build 1 commit 620d2225c"
-    },
+    "code_fingerprint": "a7a013bda678afe650d7121ae2b3538c1199f39fe359dbe3a7c53b264a2db78c",
+    "runtime_fingerprint": "041e6e98d5c679228dda35a7331d9a00d675b377acbd0900349b622f94e57554",
+    "embedding_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
     "models": [
       {
-        "name": "qwen2.5-0.5b-local",
-        "upstream_model": "Qwen2.5-0.5B-Instruct",
-        "parameters": 494032768,
-        "quantization": "Q4_K_M",
-        "sha256": "6eb923e7d26e9cea28811e1a8e852009b21242fb157b26149d3b188f3a8c8653"
+        "name": "qwen2.5:7b"
       },
       {
-        "name": "llama3.2-1b-local",
-        "upstream_model": "Llama 3.2 1B Instruct",
-        "parameters": 1235814432,
-        "quantization": "Q4_K_M",
-        "sha256": "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83"
+        "name": "llama3.1:8b"
       }
     ],
+    "decoding": {
+      "temperature": 0.0,
+      "max_tokens": 128,
+      "cache_enabled": true
+    },
+    "provenance": "Aggregate summary printed from the OCI confirmation.jsonl and supplied by the author.",
     "interpretation_limits": [
-      "These quantized 0.5B and 1.2B local models are exploratory and do not replace a hosted GPT-4o/GPT-4o-mini study.",
-      "The confirmation output contains aggregate rows, not per-query records, so main-study question-cluster bootstrap intervals do not apply.",
-      "Latency is not interpreted because cache hits make it incomparable.",
-      "The sample uses 100 fixed SQuAD validation questions and one seed per model/configuration."
+      "The output is aggregate-only; no query-level paired intervals can be computed.",
+      "The confirmation uses 100 fixed SQuAD questions and one seed per model/configuration.",
+      "Model identity is recorded by the Ollama tag; model digest and server version were not included in the supplied summary.",
+      "Cached decoding makes latency incomparable."
     ]
   }
 }

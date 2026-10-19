@@ -1,7 +1,8 @@
 """The experiment suite reported in the paper.
 
 Each study below answers one question and writes one JSONL file under ``results/paper-pinned``.
-The main study also saves per-question outcomes in a revision-keyed sidecar directory.
+The main and local-model confirmation studies also save per-question outcomes in
+revision-keyed sidecar directories.
 
 ===========================  ==================================================================
 ``main``                     How much does each layer, and the full stack, reduce attack success
@@ -408,7 +409,7 @@ def run_study(
     resume: bool = True,
     verbose: bool = True,
 ) -> list[dict[str, Any]]:
-    """Run cells and append summaries; main-study query outcomes are saved per cell."""
+    """Run cells and append summaries, with per-question records for main and confirmation."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done: set[str] = set()
     rows: list[dict[str, Any]] = []
@@ -448,7 +449,9 @@ def run_study(
         for index, cell in enumerate(cells, 1):
             identifier = cell_id(cell)
             query_path = (
-                query_records_path(out_path, identifier) if cell.study == "main" else None
+                query_records_path(out_path, identifier)
+                if cell.study in {"main", "confirmation"}
+                else None
             )
             if identifier in done and (query_path is None or query_path.exists()):
                 continue

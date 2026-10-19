@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from ragsec.eval.metrics import token_f1
+from ragsec.eval.metrics import token_f1, wilson_interval
 from ragsec.eval.suite import ATTACK_LABELS, CONFIG_LABELS, EVASION_LABELS
 
 Row = dict[str, Any]
@@ -115,16 +115,14 @@ def load_query_records(results_dir: Path) -> list[Row]:
                 if (row := json.loads(line)).get("record_type") == "query_outcome"
             )
         return records
-    records_dir = results_dir / "main_query_records"
-    if not records_dir.exists():
-        return []
     records: list[Row] = []
-    for path in sorted(records_dir.glob("*.jsonl")):
-        with path.open("r", encoding="utf-8") as handle:
-            records.extend(
-                row for line in handle if line.strip()
-                if (row := json.loads(line)).get("record_type") == "query_outcome"
-            )
+    for records_dir in sorted(results_dir.glob("*_query_records")):
+        for path in sorted(records_dir.glob("*.jsonl")):
+            with path.open("r", encoding="utf-8") as handle:
+                records.extend(
+                    row for line in handle if line.strip()
+                    if (row := json.loads(line)).get("record_type") == "query_outcome"
+                )
     return records
 
 
@@ -249,6 +247,117 @@ def query_cluster_summary(
             "conditional_target_token_f1_ci_high": (
                 conditional_target_f1[2] if conditional_target_f1 else None
             ),
+        })
+    return output
+
+
+def paired_confirmation_summary(
+    records: Sequence[Row],
+    *,
+    n_bootstrap: int = 2_000,
+    confidence: float = 0.95,
+    seed: int = QUERY_BOOTSTRAP_SEED,
+) -> list[Row]:
+    """Bootstrap paired full-minus-none ASR differences by question cluster.
+
+    Query and seed pairs are retained together across the two configurations. This estimates
+    the uncertainty in the within-sample difference conditional on the evaluated seeds.
+    """
+    if n_bootstrap < 1:
+        raise ValueError("n_bootstrap must be positive")
+    if not 0 < confidence < 1:
+        raise ValueError("confidence must be between 0 and 1")
+
+    grouped: dict[tuple[str, str, str], dict[str, dict[tuple[str, Any], Row]]] = defaultdict(
+        lambda: {"none": {}, "full": {}}
+    )
+    for row in records:
+        if row.get("study") != "confirmation" or not row.get("attacked"):
+            continue
+        if row.get("attack_success") is None:
+            continue
+        config = str(row.get("config", ""))
+        if config not in {"none", "full"}:
+            continue
+        question_id = row.get("question_cluster_id") or row.get("question")
+        if not question_id:
+            continue
+        key = (
+            str(row.get("dataset", "")),
+            str(row.get("model", "")),
+            str(row.get("attack", "")),
+        )
+        trial = (str(question_id), row.get("seed", 0))
+        grouped[key][config][trial] = row
+
+    import numpy as np
+
+    alpha = 1.0 - confidence
+    output: list[Row] = []
+    for key in sorted(grouped):
+        none_rows = grouped[key]["none"]
+        full_rows = grouped[key]["full"]
+        paired_keys = sorted(
+            set(none_rows) & set(full_rows), key=lambda item: (item[0], str(item[1]))
+        )
+        if not paired_keys:
+            continue
+        by_cluster: dict[str, list[tuple[Row, Row]]] = defaultdict(list)
+        for trial in paired_keys:
+            by_cluster[trial[0]].append((none_rows[trial], full_rows[trial]))
+        clusters = sorted(by_cluster)
+
+        def differences(pairs: Sequence[tuple[Row, Row]]) -> tuple[float, float | None]:
+            none_raw = sum(bool(none.get("attack_success")) for none, _full in pairs)
+            full_raw = sum(bool(full.get("attack_success")) for _none, full in pairs)
+            raw_delta = (full_raw - none_raw) / len(pairs)
+            none_baseline = [none for none, _full in pairs if none.get("baseline_correct")]
+            full_baseline = [full for _none, full in pairs if full.get("baseline_correct")]
+            if not none_baseline or not full_baseline:
+                return raw_delta, None
+            none_conditional = sum(bool(row.get("attack_success")) for row in none_baseline)
+            full_conditional = sum(bool(row.get("attack_success")) for row in full_baseline)
+            cond_delta = (
+                full_conditional / len(full_baseline) - none_conditional / len(none_baseline)
+            )
+            return raw_delta, cond_delta
+
+        all_pairs = [pair for cluster in clusters for pair in by_cluster[cluster]]
+        raw_delta, cond_delta = differences(all_pairs)
+        draw_seed = int.from_bytes(
+            hashlib.sha256(json.dumps(key, separators=(",", ":")).encode()).digest()[:8],
+            "big",
+        )
+        rng = np.random.default_rng(seed ^ draw_seed)
+        draws = rng.integers(0, len(clusters), size=(n_bootstrap, len(clusters)))
+        raw_draws: list[float] = []
+        conditional_draws: list[float] = []
+        for draw in draws:
+            sampled = [pair for index in draw for pair in by_cluster[clusters[int(index)]]]
+            raw_value, conditional_value = differences(sampled)
+            raw_draws.append(raw_value)
+            if conditional_value is not None:
+                conditional_draws.append(conditional_value)
+        raw_low, raw_high = np.quantile(raw_draws, [alpha / 2.0, 1.0 - alpha / 2.0])
+        conditional_ci = (
+            np.quantile(conditional_draws, [alpha / 2.0, 1.0 - alpha / 2.0]).tolist()
+            if conditional_draws and cond_delta is not None
+            else [None, None]
+        )
+        output.append({
+            "dataset": key[0],
+            "model": key[1],
+            "attack": key[2],
+            "comparison": "full-minus-none",
+            "n_paired_questions": len(clusters),
+            "n_paired_query_seed_trials": len(all_pairs),
+            "n_seeds": len({trial[1] for trial in paired_keys}),
+            "raw_asr_difference": raw_delta,
+            "raw_asr_difference_ci_low": float(raw_low),
+            "raw_asr_difference_ci_high": float(raw_high),
+            "attributable_asr_difference": cond_delta,
+            "attributable_asr_difference_ci_low": conditional_ci[0],
+            "attributable_asr_difference_ci_high": conditional_ci[1],
         })
     return output
 
@@ -1334,14 +1443,105 @@ def tab_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
 
 
 def load_local_model_summary(results_dir: Path) -> Row | None:
-    candidates = [results_dir / "local_model" / "summary.json", results_dir / "summary.json"]
+    local_dir = results_dir / "local_model"
+    confirmation_paths = [local_dir / "confirmation.jsonl", results_dir / "confirmation.jsonl"]
+    confirmation_path = next((path for path in confirmation_paths if path.exists()), None)
+    if confirmation_path is not None:
+        grouped: dict[str, dict[str, Row]] = {}
+        with confirmation_path.open("r", encoding="utf-8") as handle:
+            rows = [json.loads(line) for line in handle if line.strip()]
+        for row in rows:
+            model = str(row.get("model", ""))
+            config = str(row.get("config", ""))
+            attack_name = str(row.get("attack", ""))
+            if not model or not config:
+                continue
+            cell = grouped.setdefault(model, {}).setdefault(
+                config, {"clean_rows": [], "attack_rows": defaultdict(list)}
+            )
+            if attack_name == "clean":
+                cell["clean_rows"].append(row)
+                continue
+            cell["attack_rows"][attack_name].append(row)
+        models: dict[str, dict[str, Row]] = {}
+        for model, config_rows in grouped.items():
+            models[model] = {}
+            for config, cell in config_rows.items():
+                clean_rows = cell["clean_rows"]
+                n_queries = sum(int(row.get("n_queries") or 0) for row in clean_rows)
+                correct = sum(
+                    round(float(row.get("clean_accuracy") or 0.0) * int(row.get("n_queries") or 0))
+                    for row in clean_rows
+                )
+                abstained = sum(
+                    round(float(row.get("abstention_rate") or 0.0) * int(row.get("n_queries") or 0))
+                    for row in clean_rows
+                )
+                clean = {
+                    "clean_accuracy": correct / n_queries if n_queries else None,
+                    "clean_abstention_rate": abstained / n_queries if n_queries else None,
+                    "n_queries": n_queries,
+                    "n_questions_per_seed": max(
+                        (int(row.get("n_queries") or 0) for row in clean_rows), default=0
+                    ),
+                    "n_seeds": len({row.get("seed") for row in clean_rows}),
+                    "attacks": {},
+                }
+                for attack_name, attack_rows in cell["attack_rows"].items():
+                    n_attacked = sum(int(row.get("n_attacked") or 0) for row in attack_rows)
+                    raw_successes = sum(
+                        round(
+                            float(row.get("attack_success_rate") or 0.0)
+                            * int(row.get("n_attacked") or 0)
+                        )
+                        for row in attack_rows
+                    )
+                    n_baseline_correct = sum(
+                        int(row.get("n_baseline_correct") or 0) for row in attack_rows
+                    )
+                    attributable_successes = sum(
+                        round(
+                            float(row.get("conditional_asr") or 0.0)
+                            * int(row.get("n_baseline_correct") or 0)
+                        )
+                        for row in attack_rows
+                    )
+                    raw_ci = wilson_interval(raw_successes, n_attacked)
+                    conditional_ci = wilson_interval(
+                        attributable_successes, n_baseline_correct
+                    )
+                    clean["attacks"][attack_name] = {
+                        "asr": raw_successes / n_attacked if n_attacked else None,
+                        "asr_wilson_95_ci": list(raw_ci),
+                        "conditional_asr": (
+                            attributable_successes / n_baseline_correct
+                            if n_baseline_correct
+                            else None
+                        ),
+                        "conditional_asr_wilson_95_ci": list(conditional_ci),
+                        "n_attacked": n_attacked,
+                        "n_baseline_correct": n_baseline_correct,
+                        "n_seeds": len({row.get("seed") for row in attack_rows}),
+                        "attacked_accuracy": None,
+                        "abstention_rate": None,
+                        "poison_used_rate": None,
+                    }
+                models[model][config] = clean
+        if models:
+            return {"models": models}
+
+    candidates = [local_dir / "summary.json", results_dir / "summary.json"]
     summary_path = next((path for path in candidates if path.exists()), None)
     if summary_path is None:
         return None
     return json.loads(summary_path.read_text(encoding="utf-8"))
 
 
-def tab_local_model(results_dir: Path, out_dir: Path) -> Path | None:
+def tab_local_model(
+    results_dir: Path,
+    out_dir: Path,
+    query_intervals: Sequence[Row] = (),
+) -> Path | None:
     """Render the adaptive local-model confirmation from its aggregate summary."""
     summary = load_local_model_summary(results_dir)
     if summary is None:
@@ -1350,15 +1550,28 @@ def tab_local_model(results_dir: Path, out_dir: Path) -> Path | None:
     model_labels = {
         "qwen2.5-0.5b-local": "Qwen2.5 0.5B Instruct",
         "llama3.2-1b-local": "Llama 3.2 1B Instruct",
+        "qwen2.5:7b": "Qwen2.5 7B (Ollama)",
+        "llama3.1:8b": "Llama 3.1 8B (Ollama)",
     }
     config_labels = {
         "none": "None",
+        "L1": "L1 source verification",
         "L2": "L2 retrieval filter",
-        "full": "Full defense",
+        "L3": "L3 robust aggregation",
+        "L4": "L4 monitoring",
+        "full": "Full stack",
         "full_signed": "Full + HMAC auth.",
     }
+    intervals_by_cell = {
+        (
+            str(row.get("model", "")),
+            str(row.get("config", "")),
+            str(row.get("attack", "")),
+        ): row
+        for row in query_intervals
+    }
     def interval(value: float | None, bounds: Sequence[float] | None) -> str:
-        if value is None or bounds is None:
+        if value is None or bounds is None or bounds[0] is None or bounds[1] is None:
             return "n/a"
         return f"{value:.2f} [{bounds[0]:.2f}, {bounds[1]:.2f}]"
 
@@ -1377,27 +1590,68 @@ def tab_local_model(results_dir: Path, out_dir: Path) -> Path | None:
             if not cell:
                 continue
             clean = cell.get("clean_accuracy")
+            clean_abstention = cell.get("clean_abstention_rate")
+            clean_utility = (
+                f"{fmt(clean)} / {fmt(clean_abstention)}"
+                if clean_abstention is not None
+                else fmt(clean)
+            )
             for attack_name, attack_label in attack_labels.items():
                 attack = cell.get("attacks", {}).get(attack_name, {})
                 if not attack:
                     continue
+                interval_row = intervals_by_cell.get((model, config, attack_name), {})
+                raw_bounds = attack.get("asr_wilson_95_ci")
+                conditional_bounds = attack.get("conditional_asr_wilson_95_ci")
+                if interval_row:
+                    raw_bounds = [interval_row.get("asr_ci_low"), interval_row.get("asr_ci_high")]
+                    conditional_bounds = [
+                        interval_row.get("conditional_asr_ci_low"),
+                        interval_row.get("conditional_asr_ci_high"),
+                    ]
                 conditional = interval(
-                    attack.get("conditional_asr"), attack.get("conditional_asr_wilson_95_ci")
+                    attack.get("conditional_asr"), conditional_bounds
                 )
+                n0 = attack.get("n_baseline_correct")
+                if n0 is None and clean is not None:
+                    n0 = round(float(clean) * int(cell.get("n_queries", 0)))
+                n0_label = str(n0) if n0 is not None else "n/a"
                 body.append(
-                    f"{model_labels[model]} & {config_label} & {attack_label} & {fmt(clean)} & "
-                    f"{interval(attack.get('asr'), attack.get('asr_wilson_95_ci'))} & "
-                    f"{conditional} \\\\"
+                    f"{model_labels[model]} & {config_label} & {attack_label} & {clean_utility} & "
+                    f"{interval(attack.get('asr'), raw_bounds)} & "
+                    f"{conditional} & {n0_label} \\\\"
                 )
     if not body:
         return None
     queries = sorted({
-        int(data.get("n_queries", 0))
+        int(data.get("n_questions_per_seed", data.get("n_queries", 0)))
         for model_data in models.values()
         for data in model_data.values()
-        if data.get("n_queries") is not None
+        if data.get("n_questions_per_seed", data.get("n_queries")) is not None
+    })
+    seeds = sorted({
+        int(data.get("n_seeds", 1))
+        for model_data in models.values()
+        for data in model_data.values()
     })
     n_query_label = str(queries[0]) if len(queries) == 1 else "the reported fixed sample"
+    n_seed_label = (
+        "one seed" if seeds == [1]
+        else f"{seeds[0]} seeds" if len(seeds) == 1
+        else "the included seeds"
+    )
+    if query_intervals:
+        interval_caption = (
+            f"Brackets give 95\\% question-cluster bootstrap intervals over {n_query_label} "
+            f"distinct SQuAD questions, conditional on {n_seed_label}."
+        )
+        interval_name = "cluster CI"
+    else:
+        interval_caption = (
+            "Brackets give 95\\% Wilson intervals over pooled query-seed trials, treating "
+            f"trials as independent; each seed uses {n_query_label} fixed SQuAD questions."
+        )
+        interval_name = "Wilson"
     lines = [
         r"\begin{table*}[t]",
         r"\begin{adjustwidth}{-\extralength}{0cm}",
@@ -1405,16 +1659,18 @@ def tab_local_model(results_dir: Path, out_dir: Path) -> Path | None:
         r"\setlength{\tabcolsep}{2pt}",
         "\\caption{Local-model confirmation outcomes for three attack types. ASR is "
         "unconditional; attributable ASR is restricted to queries the same configuration "
-        "answered correctly in its clean run. Brackets give 95\\% Wilson intervals over "
-        f"{n_query_label} fixed SQuAD questions, with one seed per model and configuration."
+        "answered correctly in its clean run. $n_0$ is the clean-correct denominator. "
+        f"{interval_caption}"
         "\\label{tab:local-model}}",
         r"\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.25in}"
         r">{\raggedright\arraybackslash}p{1.1in}"
         r">{\raggedright\arraybackslash}p{0.85in}Xrrr@{}}",
         r"\toprule",
-        r"\textbf{Model} & \textbf{Defense} & \textbf{Attack} & \textbf{Clean acc.} & "
-        r"\shortstack{\textbf{ASR}\\\textbf{(95\% Wilson)}} & "
-        r"\shortstack{\textbf{Attributable ASR}\\\textbf{(95\% Wilson)}}\\",
+        r"\textbf{Model} & \textbf{Defense} & \textbf{Attack} & "
+        r"\shortstack{\textbf{Clean acc.}/\textbf{abst.}} & "
+        r"\shortstack{\textbf{ASR}\\\textbf{(95\% " + interval_name + r")}} & "
+        r"\shortstack{\textbf{Attributable ASR}\\\textbf{(95\% " + interval_name + r")}} & "
+        r"\textbf{$n_0$}\\",
         r"\midrule",
         *body,
         r"\bottomrule",
@@ -1423,6 +1679,73 @@ def tab_local_model(results_dir: Path, out_dir: Path) -> Path | None:
         r"\end{table*}",
     ]
     return _write(out_dir / "tab_local_model.tex", "\n".join(lines) + "\n")
+
+
+def tab_local_paired(rows: Sequence[Row], out_dir: Path) -> Path | None:
+    """Render paired query-cluster differences for the local full-vs-none comparison."""
+    if not rows:
+        return None
+    model_labels = {
+        "qwen2.5:7b": "Qwen2.5 7B (Ollama)",
+        "llama3.1:8b": "Llama 3.1 8B (Ollama)",
+    }
+    attack_labels = {
+        "poisoned_rag": "PoisonedRAG",
+        "prompt_injection": "Prompt injection",
+        "adaptive_poison": "Adaptive poison",
+    }
+
+    def signed_interval(value: float | None, low: float | None, high: float | None) -> str:
+        if value is None or low is None or high is None:
+            return "n/a"
+        return f"{value:+.2f} [{low:+.2f}, {high:+.2f}]"
+
+    body = []
+    for row in rows:
+        model = str(row.get("model", ""))
+        attack = str(row.get("attack", ""))
+        if model not in model_labels or attack not in attack_labels:
+            continue
+        raw_difference = signed_interval(
+            row.get("raw_asr_difference"),
+            row.get("raw_asr_difference_ci_low"),
+            row.get("raw_asr_difference_ci_high"),
+        )
+        attributable_difference = signed_interval(
+            row.get("attributable_asr_difference"),
+            row.get("attributable_asr_difference_ci_low"),
+            row.get("attributable_asr_difference_ci_high"),
+        )
+        body.append(
+            f"{model_labels[model]} & {attack_labels[attack]} & "
+            f"{raw_difference} & {attributable_difference} & "
+            f"{row.get('n_paired_questions', 'n/a')}/{row.get('n_seeds', 'n/a')} \\\\"
+        )
+    if not body:
+        return None
+    lines = [
+        r"\begin{table*}[t]",
+        r"\begin{adjustwidth}{-\extralength}{0cm}",
+        r"\scriptsize",
+        r"\setlength{\tabcolsep}{3pt}",
+        r"\caption{Paired full-minus-none differences in local-model attack success. Negative "
+        r"values favor the full stack. Brackets give 95\% question-cluster bootstrap intervals, "
+        r"conditional on the included seeds. Attributable ASR uses each configuration's own "
+        r"clean-correct baseline.\label{tab:local-paired}}",
+        r"\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.35in}p{0.95in}XXr@{}}",
+        r"\toprule",
+        r"\textbf{Model} & \textbf{Attack} & "
+        r"\shortstack{\textbf{Raw ASR difference}\\\textbf{(95\% paired CI)}} & "
+        r"\shortstack{\textbf{Attributable ASR difference}\\\textbf{(95\% paired CI)}} & "
+        r"\textbf{Questions/seeds}\\",
+        r"\midrule",
+        *body,
+        r"\bottomrule",
+        r"\end{tabularx}",
+        r"\end{adjustwidth}",
+        r"\end{table*}",
+    ]
+    return _write(out_dir / "tab_local_paired.tex", "\n".join(lines) + "\n")
 
 
 def tab_utility(rows: list[Row], out_dir: Path) -> Path:
@@ -1731,9 +2054,15 @@ def macros(
         if row.get("target_token_f1") is not None:
             macro(f"targetTokenFAdaptiveSquad{config}", f"{row['target_token_f1']:.2f}")
     if local_models:
-        aliases = {"qwen2.5-0.5b-local": "Qwen", "llama3.2-1b-local": "Llama"}
+        aliases = {
+            "qwen2.5-0.5b-local": "Qwen",
+            "llama3.2-1b-local": "Llama",
+            "qwen2.5:7b": "Qwen",
+            "llama3.1:8b": "Llama",
+        }
         config_names = {
-            "none": "None", "L2": "LTwo", "full": "Full", "full_signed": "FullSigned"
+            "none": "None", "L1": "LOne", "L2": "LTwo", "L3": "LThree",
+            "L4": "LFour", "full": "Full", "full_signed": "FullSigned"
         }
         for model, alias in aliases.items():
             for config, config_name in config_names.items():
@@ -1803,11 +2132,14 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
         fig_architecture(figures), tab_datasets(tables), tab_examples(tables)
     ]
     query_records = load_query_records(results_dir)
+    main_query_records = [
+        row for row in query_records if row.get("study", "main") == "main"
+    ]
     query_uncertainty: list[Row] = []
-    if query_records:
+    if main_query_records:
         uncertainty_path = output_dir / "query_uncertainty.json"
         uncertainty_path.parent.mkdir(parents=True, exist_ok=True)
-        query_uncertainty = query_cluster_summary(query_records)
+        query_uncertainty = query_cluster_summary(main_query_records)
         uncertainty = {
             "method": (
                 "Percentile bootstrap for ASR and target token F1 over distinct question "
@@ -1826,6 +2158,68 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
             json.dump(uncertainty, handle, indent=2)
             handle.write("\n")
         written.append(uncertainty_path)
+
+    confirmation_query_records = [
+        row for row in query_records if row.get("study") == "confirmation"
+    ]
+    local_query_intervals: list[Row] = []
+    local_uncertainty_path = output_dir / "local_model" / "query_uncertainty.json"
+    if confirmation_query_records:
+        local_query_intervals = query_cluster_summary(
+            confirmation_query_records,
+            keys=("dataset", "model", "config", "attack"),
+        )
+        local_uncertainty_path.parent.mkdir(parents=True, exist_ok=True)
+        local_uncertainty_path.write_text(
+            json.dumps(
+                {
+                    "method": (
+                        "Percentile bootstrap over distinct question clusters; each cluster "
+                        "retains its outcomes across included confirmation seeds."
+                    ),
+                    "confidence_level": 0.95,
+                    "bootstrap_replicates": 2_000,
+                    "bootstrap_seed": QUERY_BOOTSTRAP_SEED,
+                    "results": local_query_intervals,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        written.append(local_uncertainty_path)
+    else:
+        local_uncertainty_path.unlink(missing_ok=True)
+
+    paired_confirmation = paired_confirmation_summary(confirmation_query_records)
+    paired_path = output_dir / "local_model" / "paired_uncertainty.json"
+    if paired_confirmation:
+        paired_path.parent.mkdir(parents=True, exist_ok=True)
+        paired_path.write_text(
+            json.dumps(
+                {
+                    "method": (
+                        "Paired percentile bootstrap over exact question clusters, comparing "
+                        "full minus none while keeping each question's outcomes paired across "
+                        "configurations and seeds. Intervals are conditional on included seeds."
+                    ),
+                    "confidence_level": 0.95,
+                    "bootstrap_replicates": 2_000,
+                    "bootstrap_seed": QUERY_BOOTSTRAP_SEED,
+                    "results": paired_confirmation,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        written.append(paired_path)
+        paired_table = tab_local_paired(paired_confirmation, tables)
+        if paired_table is not None:
+            written.append(paired_table)
+    else:
+        paired_path.unlink(missing_ok=True)
+        (tables / "tab_local_paired.tex").unlink(missing_ok=True)
 
     def attempt(label: str, fn: Callable[[], Path]) -> None:
         try:
@@ -1863,7 +2257,7 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
     if studies["generator"]:
         attempt("tab_generator", lambda: tab_generator(studies["generator"], tables))
         attempt("fig_generator", lambda: fig_generator(studies["generator"], figures))
-    local_table = tab_local_model(results_dir, tables)
+    local_table = tab_local_model(results_dir, tables, local_query_intervals)
     if local_table is not None:
         written.append(local_table)
     local_summary = load_local_model_summary(results_dir)
