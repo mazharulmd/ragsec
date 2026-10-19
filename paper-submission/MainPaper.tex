@@ -2,7 +2,7 @@
 
 %% =========================================================================
 %% Evaluating Layered RAG Defenses Against Adaptive Knowledge Poisoning
-%% Submission draft for Computers \& Security (Elsevier).
+%% Submission draft for the Journal of Information Security and Applications (Elsevier).
 %%
 %% Compile:  pdflatex MainPaper && bibtex MainPaper && pdflatex MainPaper && pdflatex MainPaper
 %%
@@ -42,7 +42,7 @@
 \renewcommand{\theHALG@line}{\thealgorithm.\arabic{ALG@line}}
 \makeatother
 
-\journal{Computers \& Security}
+\journal{Journal of Information Security and Applications}
 
 %% Result values are generated from the compact, versioned artifact bundle.
 \input{tables/macros.tex}
@@ -84,37 +84,27 @@
 \begin{abstract}
 Retrieval-augmented generation (RAG) places an external document pipeline inside a language
 model's trust boundary, so any party able to write to the knowledge base can shape the answers
-users receive. Cryptographic provenance is widely treated as the answer to knowledge-base
-poisoning, and a layered evaluation reproduces that impression: authenticated ingestion cuts
+users receive. Cryptographic provenance is widely treated as the answer to this, and a
+layered evaluation agrees: authenticated ingestion cuts
 attack-attributable success against an adaptive poisoning campaign to
-\casrAdaptiveHotpotqafullsigned{} on HotpotQA, where content-based filtering alone leaves
+\casrAdaptiveHotpotqafullsigned{} on HotpotQA, where content filtering alone leaves
 \casrAdaptiveHotpotqafull{}. That protection assumes every holder of a valid signing key is
 honest. A signature proves that an authorised publisher vouched for a document, not that the
 publisher is trustworthy, and aggregation compounds the gap by counting corroboration over
-document identifiers, so one publisher that uploads $k$ paraphrases of a claim counts as $k$
-witnesses. We therefore extend the adversary model with an authorised but compromised
-publisher, and propose provenance-weighted corroboration with independence discounting:
-evidence is partitioned into classes derived only from forgery-resistant provenance, namely the
-key that verifiably signed a document, its source, and its author; agreement is counted over
-classes rather than documents; and within a class only the strongest item contributes weight.
-Under a compromised publisher, authentication provides no protection, with attributable success
-rising from \casrAdaptiveSquadfullsigned{} to \compromiseSignedSquadBThree{} on SQuAD and from
+document identifiers, so one publisher uploading $k$ paraphrases counts as $k$ witnesses. We
+extend the adversary model with an authorised but compromised publisher, and propose
+provenance-weighted corroboration with independence discounting: evidence is partitioned into
+classes derived from forgery-resistant provenance: the key that verifiably signed a document,
+its source and its author; agreement is counted over classes rather than documents;
+and within a class only the strongest item contributes weight. Under a compromised publisher,
+authentication provides no protection, with attributable success rising from
+\casrAdaptiveSquadfullsigned{} to \compromiseSignedSquadBThree{} on SQuAD and from
 \casrAdaptiveHotpotqafullsigned{} to \compromiseSignedHotpotqaBThree{} on HotpotQA.
-Independence discounting lowers it to \compromiseSignedIndependentSquadBFive{} (95\%
-question-cluster interval
-\compromiseCIFullsignedindependentSquadBFiveLow{}--\compromiseCIFullsignedindependentSquadBFiveHigh{})
-against \compromiseSignedSquadBFive{} on SQuAD, with clean accuracy unchanged and more
-abstention; the benefit is absent against single-document attacks and narrows when poison
-displaces genuine evidence during retrieval. On two locally served models the direction holds
-and no regression occurs, but the effect is small and unconfirmed: across
-\pairedIndepPooledPairs{} paired model-question trials the rule prevented
-\pairedIndepPooledPrevented{} attacks and caused \pairedIndepPooledCaused{}
-($p = \pairedIndepPooledP{}$), and these models resist the adaptive campaign far more than the
-deterministic generator does, leaving much less for any aggregation rule to recover. Signing a
-corpus therefore buys authenticity, not robustness, and a near-zero poisoning rate under
-authenticated ingestion may measure the assumption rather than the defense. Counting corroboration over independence classes needs no
-retraining and no additional retrieval, and removes the cheapest escalation available to a
-poisoning adversary.
+Independence discounting lowers it to \compromiseSignedIndependentSquadBFive{} against
+\compromiseSignedSquadBFive{} on SQuAD, with clean accuracy unchanged and more abstention,
+though on served models the reduction is directional only. Signing a corpus therefore buys authenticity, not robustness, and a near-zero
+poisoning rate under authenticated ingestion may measure the assumption rather than the
+defense.
 \end{abstract}
 
 \begin{keyword}
@@ -1714,7 +1704,17 @@ document integrity explicit at ingestion, to count corroboration over parties wh
 has been proved rather than over submitter-chosen identifiers, and to report any defense
 together with the threat-model assumption on which its measured protection depends.
 
-\section*{Declaration of generative AI and AI-assisted technologies in the writing process}
+\section*{Declaration of competing interest}
+
+The authors declare that they have no known competing financial interests or personal
+relationships that could have appeared to influence the work reported in this paper.
+
+\section*{Funding}
+
+This research did not receive any specific grant from funding agencies in the public,
+commercial, or not-for-profit sectors.
+
+\section*{Declaration of generative AI and AI-assisted technologies in the manuscript preparation process}
 
 During the preparation of this work the authors used an AI-assisted coding and writing tool to
 support implementation, experiment orchestration and drafting. After using this tool the authors
