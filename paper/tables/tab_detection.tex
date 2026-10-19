@@ -1,6 +1,7 @@
-\begin{table}[H]
+\begin{table*}[t]
 \begin{adjustwidth}{-\extralength}{0cm}
 \footnotesize
+\setlength{\tabcolsep}{3pt}
 \caption{Retrieval-filter detection quality, measured in the filter-only configuration so that Layer 1 does not remove the candidates the filter is being scored on. AUROC and average precision (AUPRC) are threshold-free and computed over every retrieval candidate; TPR is measured at the deployed operating point. Poisoned candidates are a small minority of the candidate set, so AUPRC is the more informative summary. False-positive rate on unattacked traffic was 0.01 (SQuAD), 0.01 (HotpotQA), 0.00 (Toy corpus).\label{tab:detection}}
 \begin{tabular}{lrrrrrrrrr}
 \toprule
@@ -14,4 +15,4 @@ Adaptive poisoning & 0.47 & 0.56 & 0.00 & 0.65 & 0.47 & 0.02 & 0.32 & 0.66 & 0.0
 \bottomrule
 \end{tabular}
 \end{adjustwidth}
-\end{table}
+\end{table*}

@@ -1,17 +1,18 @@
-\begin{table}[H]
+\begin{table*}[t]
 \begin{adjustwidth}{-\extralength}{0cm}
 \footnotesize
+\setlength{\tabcolsep}{3pt}
 \caption{Attack success rate under ingestion controls of increasing strength, against a static (PoisonedRAG) and a provenance-spoofing adaptive adversary, $3$ documents per target. The final column counts poisoned documents rejected at ingestion for the adaptive adversary on the first dataset.\label{tab:provenance}}
-\begin{tabular}{lrrrrrrr}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{1.65in}>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
 \toprule
-\textbf{Ingestion control} & \textbf{SQuAD static} & \textbf{SQuAD adaptive} & \textbf{HotpotQA static} & \textbf{HotpotQA adaptive} & \textbf{Toy corpus static} & \textbf{Toy corpus adaptive} & \textbf{Rejected docs}\\
+\textbf{Ingestion control} & \textbf{\shortstack{SQuAD\\static}} & \textbf{\shortstack{SQuAD\\adaptive}} & \textbf{\shortstack{HotpotQA\\static}} & \textbf{\shortstack{HotpotQA\\adaptive}} & \textbf{\shortstack{Toy corpus\\static}} & \textbf{\shortstack{Toy corpus\\adaptive}} & \textbf{Rejected docs}\\
 \midrule
 No ingestion control & 0.99 & 0.82 & 0.96 & 0.96 & 0.66 & 0.41 & 0\\
 Trust threshold ($\theta_{\mathrm{trust}}=0.6$) & 0.01 & 0.82 & 0.00 & 0.96 & 0.00 & 0.41 & 0\\
 Source allowlist $+$ trust threshold & 0.01 & 0.82 & 0.00 & 0.96 & 0.00 & 0.41 & 0\\
 Allowlist $+$ per-source quota & 0.01 & 0.15 & 0.00 & 0.96 & 0.00 & 0.00 & 750\\
-HMAC-signed ingestion (allowlist $+$ signature) & 0.01 & 0.01 & 0.00 & 0.00 & 0.00 & 0.00 & 900\\
+HMAC-authenticated ingestion (allowlist $+$ MAC tag) & 0.01 & 0.01 & 0.00 & 0.00 & 0.00 & 0.00 & 900\\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{adjustwidth}
-\end{table}
+\end{table*}
