@@ -261,11 +261,19 @@ def paired_confirmation_summary(
     n_bootstrap: int = 2_000,
     confidence: float = 0.95,
     seed: int = QUERY_BOOTSTRAP_SEED,
+    baseline: str = "none",
+    treatment: str = "full",
 ) -> list[Row]:
-    """Bootstrap paired full-minus-none ASR differences by question cluster.
+    """Bootstrap paired treatment-minus-baseline ASR differences by question cluster.
 
     Query and seed pairs are retained together across the two configurations. This estimates
     the uncertainty in the within-sample difference conditional on the evaluated seeds.
+
+    Pairing matters most when the two configurations share their upstream behaviour. Two
+    aggregation rules over the same retrieved passages issue identical generation prompts and
+    differ only in how the resulting answers are weighted, so their per-question outcomes are
+    strongly correlated and an unpaired interval mostly measures variance the comparison does
+    not depend on.
     """
     if n_bootstrap < 1:
         raise ValueError("n_bootstrap must be positive")
@@ -273,7 +281,7 @@ def paired_confirmation_summary(
         raise ValueError("confidence must be between 0 and 1")
 
     grouped: dict[tuple[str, str, str], dict[str, dict[tuple[str, Any], Row]]] = defaultdict(
-        lambda: {"none": {}, "full": {}}
+        lambda: {baseline: {}, treatment: {}}
     )
     for row in records:
         if row.get("study") != "confirmation" or not row.get("attacked"):
@@ -281,7 +289,7 @@ def paired_confirmation_summary(
         if row.get("attack_success") is None:
             continue
         config = str(row.get("config", ""))
-        if config not in {"none", "full"}:
+        if config not in {baseline, treatment}:
             continue
         question_id = row.get("question_cluster_id") or row.get("question")
         if not question_id:
@@ -299,8 +307,8 @@ def paired_confirmation_summary(
     alpha = 1.0 - confidence
     output: list[Row] = []
     for key in sorted(grouped):
-        none_rows = grouped[key]["none"]
-        full_rows = grouped[key]["full"]
+        none_rows = grouped[key][baseline]
+        full_rows = grouped[key][treatment]
         paired_keys = sorted(
             set(none_rows) & set(full_rows), key=lambda item: (item[0], str(item[1]))
         )
@@ -328,8 +336,26 @@ def paired_confirmation_summary(
 
         all_pairs = [pair for cluster in clusters for pair in by_cluster[cluster]]
         raw_delta, cond_delta = differences(all_pairs)
+        # Discordant pairs say plainly what the difference is made of: how often the treatment
+        # prevented an attack the baseline allowed, and how often it caused one the baseline
+        # prevented. A small mean difference built from zero regressions means something
+        # different from the same difference built from offsetting changes.
+        baseline_only = sum(
+            1
+            for base, treat in all_pairs
+            if base.get("attack_success") and not treat.get("attack_success")
+        )
+        treatment_only = sum(
+            1
+            for base, treat in all_pairs
+            if treat.get("attack_success") and not base.get("attack_success")
+        )
+        # Fold the comparison into the draw seed: two comparisons over the same model and
+        # attack would otherwise share one bootstrap stream.
         draw_seed = int.from_bytes(
-            hashlib.sha256(json.dumps(key, separators=(",", ":")).encode()).digest()[:8],
+            hashlib.sha256(
+                json.dumps([*key, baseline, treatment], separators=(",", ":")).encode()
+            ).digest()[:8],
             "big",
         )
         rng = np.random.default_rng(seed ^ draw_seed)
@@ -352,9 +378,11 @@ def paired_confirmation_summary(
             "dataset": key[0],
             "model": key[1],
             "attack": key[2],
-            "comparison": "full-minus-none",
+            "comparison": f"{treatment}-minus-{baseline}",
             "n_paired_questions": len(clusters),
             "n_paired_query_seed_trials": len(all_pairs),
+            "n_prevented_by_treatment": baseline_only,
+            "n_caused_by_treatment": treatment_only,
             "n_seeds": len({trial[1] for trial in paired_keys}),
             "raw_asr_difference": raw_delta,
             "raw_asr_difference_ci_low": float(raw_low),
@@ -1862,6 +1890,7 @@ def macros(
     query_uncertainty: Sequence[Row] = (),
     local_models: Row | None = None,
     compromise_uncertainty: Sequence[Row] = (),
+    paired_mechanism: Sequence[Row] = (),
 ) -> Path:
     main = studies.get("main", [])
     evasion = studies.get("evasion", [])
@@ -2128,6 +2157,44 @@ def macros(
                           ("High", "conditional_asr_ci_high")):
             if row.get(key) is not None:
                 macro(f"compromiseCI{config}{dataset}B{budget}{edge}", f"{row[key]:.2f}")
+
+    # Paired comparison of the two corroboration units on served models. The arms share
+    # retrieval and generation exactly, so the paired difference is the informative statistic
+    # and the discordant counts say what it is made of.
+    for row in paired_mechanism:
+        if row.get("attack") != "adaptive_poison":
+            continue
+        alias = {"qwen2.5:7b": "Qwen", "llama3.1:8b": "Llama"}.get(str(row.get("model")))
+        if alias is None:
+            continue
+        delta = row.get("attributable_asr_difference")
+        if delta is not None:
+            macro(f"pairedIndep{alias}Delta", f"{delta:+.2f}")
+        for edge, key in (("Low", "attributable_asr_difference_ci_low"),
+                          ("High", "attributable_asr_difference_ci_high")):
+            if row.get(key) is not None:
+                macro(f"pairedIndep{alias}{edge}", f"{row[key]:+.2f}")
+        if row.get("n_prevented_by_treatment") is not None:
+            macro(f"pairedIndep{alias}Prevented", str(row["n_prevented_by_treatment"]))
+        if row.get("n_caused_by_treatment") is not None:
+            macro(f"pairedIndep{alias}Caused", str(row["n_caused_by_treatment"]))
+        if row.get("n_paired_questions") is not None:
+            macro(f"pairedIndep{alias}Questions", str(row["n_paired_questions"]))
+
+    adaptive_mech = [r for r in paired_mechanism if r.get("attack") == "adaptive_poison"]
+    if adaptive_mech:
+        prevented = sum(int(r.get("n_prevented_by_treatment") or 0) for r in adaptive_mech)
+        caused = sum(int(r.get("n_caused_by_treatment") or 0) for r in adaptive_mech)
+        pairs = sum(int(r.get("n_paired_questions") or 0) for r in adaptive_mech)
+        macro("pairedIndepPooledPrevented", str(prevented))
+        macro("pairedIndepPooledCaused", str(caused))
+        macro("pairedIndepPooledPairs", str(pairs))
+        # Exact two-sided McNemar over the discordant pairs.
+        discordant = prevented + caused
+        if discordant:
+            fewer = min(prevented, caused)
+            tail = sum(math.comb(discordant, i) for i in range(fewer + 1))
+            macro("pairedIndepPooledP", f"{min(1.0, 2 * tail * 0.5 ** discordant):.3f}")
 
     if local_models:
         aliases = {
@@ -2432,6 +2499,9 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
         local_uncertainty_path.unlink(missing_ok=True)
 
     paired_confirmation = paired_confirmation_summary(confirmation_query_records)
+    paired_mechanism = paired_confirmation_summary(
+        confirmation_query_records, baseline="full", treatment="full_independent"
+    )
     paired_path = output_dir / "local_model" / "paired_uncertainty.json"
     if paired_confirmation:
         paired_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2507,7 +2577,14 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
         written.append(local_table)
     local_summary = load_local_model_summary(results_dir)
     written.append(
-        macros(studies, tables, query_uncertainty, local_summary, compromise_uncertainty)
+        macros(
+            studies,
+            tables,
+            query_uncertainty,
+            local_summary,
+            compromise_uncertainty,
+            paired_mechanism,
+        )
     )
     missing = verify_macros(output_dir / "body.tex", tables / "macros.tex")
     if missing:

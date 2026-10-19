@@ -105,9 +105,14 @@ question-cluster interval
 \compromiseCIFullsignedindependentSquadBFiveLow{}--\compromiseCIFullsignedindependentSquadBFiveHigh{})
 against \compromiseSignedSquadBFive{} on SQuAD, with clean accuracy unchanged and more
 abstention; the benefit is absent against single-document attacks and narrows when poison
-displaces genuine evidence during retrieval. Signing a corpus therefore buys authenticity, not
-robustness, and a near-zero poisoning rate under authenticated ingestion may measure the
-assumption rather than the defense. Counting corroboration over independence classes needs no
+displaces genuine evidence during retrieval. On two locally served models the direction holds
+and no regression occurs, but the effect is small and unconfirmed: across
+\pairedIndepPooledPairs{} paired model-question trials the rule prevented
+\pairedIndepPooledPrevented{} attacks and caused \pairedIndepPooledCaused{}
+($p = \pairedIndepPooledP{}$), and these models resist the adaptive campaign far more than the
+deterministic generator does, leaving much less for any aggregation rule to recover. Signing a
+corpus therefore buys authenticity, not robustness, and a near-zero poisoning rate under
+authenticated ingestion may measure the assumption rather than the defense. Counting corroboration over independence classes needs no
 retraining and no additional retrieval, and removes the cheapest escalation available to a
 poisoning adversary.
 \end{abstract}
@@ -187,7 +192,9 @@ identifiers are chosen by whoever submits the document, an adversary buys appare
 with uploads alone. Counting agreement over provenance independence classes instead lowers
 attributable success to \compromiseSignedIndependentSquadBFive{} against
 \compromiseSignedSquadBFive{} at five injected documents per target, with clean accuracy
-unchanged.
+unchanged. On served models the same rule moves in the same direction without ever making an
+outcome worse, but by too little for this sample to establish, which we report as a bound on
+the contribution rather than as a confirmation of it.
 
 The contribution pairs a negative result about a widely assumed defense with a mechanism that
 addresses part of what the negative result exposes. Specifically, we provide:
@@ -1223,6 +1230,15 @@ Layer~1 admits them by construction: the allowlist, the trust score, and the sig
 all pass. Table~\ref{tab:compromise} and Figure~\ref{fig:compromise} give the results, with the
 adaptive attack at matched budgets.
 
+One qualification applies throughout this subsection. These runs use the deterministic
+generator, which accepts a corroborated document by construction, so the rates below measure
+how much corroboration the adversary can manufacture rather than how convincing a served model
+finds it. The served models of Section~\ref{sec:res:local} hold the undefended adaptive rate to
+\localCasrQwenNone{} and \localCasrLlamaNone{}, far below the deterministic figures, so the
+magnitudes here should be read as an upper bound on what a credulous generator permits. What
+does not depend on the generator is the admission result: a correctly signed document from an
+authorised source passes ingestion whatever the generator later does with it.
+
 \paragraph{Authentication contributes nothing once a key is held.}
 At the budget used throughout the main results ($b=3$), attack-attributable success under the
 signed configuration rises from \casrAdaptiveSquadfullsigned{} to
@@ -1486,6 +1502,7 @@ the five attacks in this study and leave the knowledge-integrity problem untouch
 \end{figure*}
 
 \subsection{Local-Generator Confirmation}
+\label{sec:res:local}
 
 Table~\ref{tab:local-model} reports the seven-configuration confirmation on 100 SQuAD questions
 for each of two locally served models. The full content-based stack lowers raw adaptive ASR from
@@ -1505,11 +1522,41 @@ prompt-injection ASR relative to no defense on both models (0.30 to 0.36 on Llam
 The full-signed condition yields zero measured ASR for all three attacks in both 100-question
 runs, under the protected-publisher assumption that the attacker cannot obtain a valid tag.
 
+Independence discounting was confirmed against the same two models in a separate run that
+evaluated the undefended pipeline, the full stack, and the full stack with independence
+discounting together, so that the three arms share one set of model builds and one code
+revision. Attributable adaptive success falls from \localCasrQwenFull{} to
+\localCasrQwenFullIndependent{} on Qwen and from \localCasrLlamaFull{} to
+\localCasrLlamaFullIndependent{} on Llama, with clean accuracy unchanged in both cases
+(\localCleanAccQwenFullIndependent{} and \localCleanAccLlamaFullIndependent{}).
+
+The paired difference is the statistic this comparison calls for. The two arms retrieve the
+same passages and issue the same generation prompts, differing only in how the resulting
+answers are weighted, so their per-question outcomes are strongly correlated and an unpaired
+interval is dominated by variance the comparison does not depend on. Paired over questions, the
+difference in attributable success is \pairedIndepQwenDelta{}
+(\pairedIndepQwenLow{}, \pairedIndepQwenHigh{}) on Qwen and \pairedIndepLlamaDelta{}
+(\pairedIndepLlamaLow{}, \pairedIndepLlamaHigh{}) on Llama. Across the
+\pairedIndepPooledPairs{} model-question pairs, independence discounting prevented
+\pairedIndepPooledPrevented{} attacks that succeeded under identifier counting and caused
+\pairedIndepPooledCaused{} that did not, an exact McNemar $p$ of \pairedIndepPooledP{}.
+
+Two things follow, and they pull in opposite directions. The direction is consistent across
+both models and no regression was observed in either, which is the behaviour the rule is
+designed for: it can withdraw weight from a fabricated majority, and it has no mechanism by
+which it could manufacture one. But four discordant pairs out of
+\pairedIndepPooledPairs{} does not establish the effect, and we do not claim it does. The
+headroom is also far smaller here than in the deterministic setting: the undefended adaptive
+rate is \localCasrQwenNone{} and \localCasrLlamaNone{} on these models, against
+\casrAdaptiveSquadnone{} and \casrAdaptiveHotpotqanone{} with the mock generator, which
+believes a corroborated document by construction. We therefore report independence discounting
+as measured in the deterministic setting, directionally consistent on served models, and not
+confirmed by them.
+
 These are one-seed, fixed-sample observations. Wilson intervals are wide and overlap for the
-main content-only adaptive comparison; because the confirmation output contains aggregate rows
-only, we cannot compute a paired question-level interval. The results do not establish
-population-level model behavior, and cached decoding makes latency incomparable. No hosted
-commercial model was evaluated.
+main content-only adaptive comparison, which is why the paired analysis above is reported
+alongside them. The results do not establish population-level model behavior, and cached
+decoding makes latency incomparable. No hosted commercial model was evaluated.
 
 \input{tables/tab_local_model.tex}
 \IfFileExists{tables/tab_local_paired.tex}{\input{tables/tab_local_paired.tex}}{}
@@ -1580,11 +1627,15 @@ The main factorial uses a deterministic mock generator. The local-model follow-u
 the Ollama tags Qwen2.5 7B and Llama 3.1 8B, 100 SQuAD questions per configuration, and one
 seed. The full content-based stack produces modest observed adaptive-ASR reductions, with
 overlapping Wilson intervals, a four-point clean-accuracy decrease on Qwen, and one- to two-point
-increases in clean abstention. Aggregate-only records do not support paired query-level intervals
-or comparative latency claims. The local confirmation does not test hosted models or establish behavior across
-model versions, quantizations, or decoding settings. The supplied run summary records the
-Ollama tags but not model digests, quantization metadata, or the Ollama server version, so the
-exact served model builds cannot yet be independently pinned.
+increases in clean abstention. The local confirmation does not test hosted models or establish
+behavior across model versions, quantizations, or decoding settings, and latency under cached
+decoding is not comparable. The independence-discounting arm was measured in a later run, after
+the model tags had been pulled again, so it is reported separately from the seven-configuration
+ablation rather than merged into it; the two runs agree to within two points on the
+configurations they share, which is itself a bound on how reproducible a served-model
+measurement is across pulls. For that later run the released artifact records each model's
+digest, quantization level, parameter size, context length, and the Ollama server version, so
+its served builds are pinned; the earlier seven-configuration run records tags only.
 
 The evaluated corpora contain 30 to 1,999 documents, and the main experiments use one
 sentence-transformer retriever with exact inner-product search. We did not evaluate production
@@ -1649,7 +1700,10 @@ Counting agreement over provenance independence classes instead reduces attribut
 \compromiseSignedIndependentSquadBFive{} against \compromiseSignedSquadBFive{} at five
 documents per target, with clean accuracy unchanged, at the cost of more abstention; the
 benefit is absent against single-document attacks and narrows where poison displaces genuine
-evidence during retrieval.
+evidence during retrieval. On two served models the rule prevented
+\pairedIndepPooledPrevented{} attacks and caused \pairedIndepPooledCaused{} across
+\pairedIndepPooledPairs{} paired trials, which is consistent in direction but too small a
+difference for this sample to confirm.
 
 These findings do not establish a generally effective RAG defense or enterprise-scale behavior.
 They show that, in the tested configuration, metadata trust and surface filtering were
