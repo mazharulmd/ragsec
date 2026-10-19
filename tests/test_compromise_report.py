@@ -160,3 +160,32 @@ def test_generated_macro_names_are_legal_tex(raw: str, expected: str) -> None:
 
     assert name == expected
     assert name.isalpha(), "a TeX control word may contain letters only"
+
+
+# ---------------------------------------------------------------------------
+# Confirmation-study selection
+# ---------------------------------------------------------------------------
+
+
+def test_the_new_configurations_are_selectable_for_confirmation() -> None:
+    """Regression: the default confirmation grid is not the set of permitted choices.
+
+    Validating a caller's selection against CONFIRMATION_CONFIGS rejected
+    full_independent, which defense_stack resolves perfectly well, so the real-model
+    confirmation of the mechanism could not be requested at all.
+    """
+    from ragsec.eval.suite import CONFIG_LABELS, defense_stack
+
+    for config in ("full_independent", "full_signed_independent", "L3_independent"):
+        assert config in CONFIG_LABELS
+        assert defense_stack(config, "squad"), f"{config} must resolve to a stack"
+
+
+def test_an_unknown_confirmation_configuration_is_still_rejected() -> None:
+    from ragsec.eval.suite import run_suite
+
+    with pytest.raises(ValueError, match="Unknown confirmation configurations"):
+        run_suite(
+            studies=["confirmation"],
+            confirmation_configs=["not_a_configuration"],
+        )

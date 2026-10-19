@@ -891,7 +891,10 @@ def run_suite(
     if queries:
         CONFIRMATION_QUERIES = queries
     if confirmation_configs is not None:
-        valid_configs = set(CONFIRMATION_CONFIGS)
+        # Any configuration the suite can build is selectable here. CONFIRMATION_CONFIGS is
+        # only the default grid, so validating against it would reject a newly added
+        # configuration that defense_stack resolves perfectly well.
+        valid_configs = set(CONFIG_LABELS)
         unknown_configs = set(confirmation_configs) - valid_configs
         if unknown_configs:
             raise ValueError(
