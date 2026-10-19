@@ -51,35 +51,9 @@
 
 \begin{frontmatter}
 
-\title{Provenance independence discounting: securing retrieval-augmented generation against corroborated knowledge-base poisoning}
+\title{Counting sources, not documents: defending retrieval-augmented generation against knowledge-base poisoning}
 
-\author[nsu]{Md Mazharul Islam\corref{cor1}}
-\ead{mazharul.islam1@northsouth.edu}
 
-\author[ju]{Mohona Islam Nidra}
-\ead{mohonaislam1920@gmail.com}
-
-\author[wu]{Koushik Saha}
-\ead{k.saha.1024@westcliff.edu}
-
-\cortext[cor1]{Corresponding author.}
-
-\affiliation[nsu]{organization={Department of Electrical and Computer Engineering,
-                                North South University},
-                  city={Dhaka},
-                  postcode={1229},
-                  country={Bangladesh}}
-
-\affiliation[ju]{organization={Department of Computer Science and Engineering,
-                               Jahangirnagar University},
-                 city={Dhaka},
-                 postcode={1342},
-                 country={Bangladesh}}
-
-\affiliation[wu]{organization={Master of Science in Engineering Management,
-                               Westcliff University},
-                 state={California},
-                 country={United States}}
 
 \begin{abstract}
 Retrieval-augmented generation (RAG) places an external document pipeline inside a language
@@ -1704,16 +1678,6 @@ document integrity explicit at ingestion, to count corroboration over parties wh
 has been proved rather than over submitter-chosen identifiers, and to report any defense
 together with the threat-model assumption on which its measured protection depends.
 
-\section*{Declaration of competing interest}
-
-The authors declare that they have no known competing financial interests or personal
-relationships that could have appeared to influence the work reported in this paper.
-
-\section*{Funding}
-
-This research did not receive any specific grant from funding agencies in the public,
-commercial, or not-for-profit sectors.
-
 \section*{Declaration of generative AI and AI-assisted technologies in the manuscript preparation process}
 
 During the preparation of this work the authors used an AI-assisted coding and writing tool to
@@ -1725,7 +1689,8 @@ published article.
 
 The framework, the attack and defense implementations, the experiment suite, the configuration
 files, aggregate experiment outputs, and scripts to regenerate the tables, figures, and result
-macros are available in the public \href{https://github.com/mazharulmd/ragsec}{GitHub repository}.
+macros are available in a public repository whose address is withheld during anonymized
+review and will be supplied on acceptance.
 The compact query-level artifact stores SHA-256 question-cluster identifiers, attack outcomes,
 and token-F1 values against each target answer, while omitting question, reference-answer, and
 generated-answer text.
