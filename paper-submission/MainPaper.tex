@@ -1,8 +1,8 @@
-\documentclass[5p,times]{elsarticle}
+\documentclass[5p,times,authoryear]{elsarticle}
 
 %% =========================================================================
 %% Evaluating Layered RAG Defenses Against Adaptive Knowledge Poisoning
-%% Submission draft for the Journal of Information Security and Applications (Elsevier).
+%% Submission draft for Expert Systems with Applications (Elsevier).
 %%
 %% Compile:  pdflatex MainPaper && bibtex MainPaper && pdflatex MainPaper && pdflatex MainPaper
 %%
@@ -42,7 +42,7 @@
 \renewcommand{\theHALG@line}{\thealgorithm.\arabic{ALG@line}}
 \makeatother
 
-\journal{Journal of Information Security and Applications}
+\journal{Expert Systems with Applications}
 
 %% Result values are generated from the compact, versioned artifact bundle.
 \input{tables/macros.tex}
@@ -51,7 +51,7 @@
 
 \begin{frontmatter}
 
-\title{Signed but Not Safe: Provenance Independence and the Limits of Authenticated Ingestion in Retrieval-Augmented Generation}
+\title{Provenance independence discounting: securing retrieval-augmented generation against corroborated knowledge-base poisoning}
 
 \author[nsu]{Md Mazharul Islam\corref{cor1}}
 \ead{mazharul.islam1@northsouth.edu}
@@ -1751,7 +1751,7 @@ RAG & Retrieval-augmented generation\\
 TPR & True-positive rate\\
 \end{tabularx}
 
-\bibliographystyle{elsarticle-num}
+\bibliographystyle{elsarticle-harv}
 \bibliography{References}
 
 \end{document}

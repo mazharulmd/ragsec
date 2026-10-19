@@ -1,7 +1,6 @@
 # ragsec: RAG Security and Poisoning Attack Defense
 
-Research codebase for the paper *Signed but Not Safe: Provenance Independence and the Limits
-of Authenticated Ingestion in Retrieval-Augmented Generation*. It provides:
+Research codebase for the paper *Provenance independence discounting: securing retrieval-augmented generation against corroborated knowledge-base poisoning*. It provides:
 
 - an instrumented retrieval-augmented generation (RAG) pipeline with provenance-aware data models,
 - **five knowledge-base poisoning attacks**, including a defense-aware *adaptive* adversary,
