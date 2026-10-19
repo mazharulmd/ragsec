@@ -1,0 +1,17 @@
+\begin{table*}[t]
+\centering
+\small
+\caption{Attack-attributable success rate (and abstention on attacked queries) under adversary $\mathcal{A}_2$, which holds one authorised publisher's signing key. Signed ingestion admits this adversary's documents by construction, so the two rows differ only in whether corroboration is counted over document identifiers or over provenance independence classes. Pooled over three seeds.\label{tab:compromise}}
+\begin{tabular}{llrrrrr}
+\toprule
+Corpus & Corroboration unit & $b=1$ & $b=2$ & $b=3$ & $b=5$ & $b=8$ \\
+\midrule
+SQuAD & Document identifier & 0.65 (0.15) & 0.82 (0.08) & 0.82 (0.08) & 0.83 (0.08) & 0.85 (0.06) \\
+ & Independence class & 0.65 (0.15) & 0.70 (0.13) & 0.63 (0.22) & 0.59 (0.28) & 0.77 (0.11) \\
+\addlinespace
+HotpotQA & Document identifier & 0.64 (0.09) & 0.84 (0.02) & 0.83 (0.06) & 0.85 (0.07) & 0.92 (0.02) \\
+ & Independence class & 0.64 (0.09) & 0.84 (0.06) & 0.71 (0.21) & 0.70 (0.26) & 0.86 (0.08) \\
+\addlinespace
+\bottomrule
+\end{tabular}
+\end{table*}

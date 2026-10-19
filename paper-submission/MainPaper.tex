@@ -2,7 +2,7 @@
 
 %% =========================================================================
 %% Evaluating Layered RAG Defenses Against Adaptive Knowledge Poisoning
-%% Submission draft for the Journal of Information Security and Applications (Elsevier).
+%% Submission draft for Computers \& Security (Elsevier).
 %%
 %% Compile:  pdflatex MainPaper && bibtex MainPaper && pdflatex MainPaper && pdflatex MainPaper
 %%
@@ -42,7 +42,7 @@
 \renewcommand{\theHALG@line}{\thealgorithm.\arabic{ALG@line}}
 \makeatother
 
-\journal{Journal of Information Security and Applications}
+\journal{Computers \& Security}
 
 %% Result values are generated from the compact, versioned artifact bundle.
 \input{tables/macros.tex}
@@ -51,7 +51,7 @@
 
 \begin{frontmatter}
 
-\title{Evaluating Layered RAG Defenses Against Adaptive Knowledge Poisoning: A Reproducible Security--Utility Study}
+\title{Signed but Not Safe: Provenance Independence and the Limits of Authenticated Ingestion in Retrieval-Augmented Generation}
 
 \author[nsu]{Md Mazharul Islam\corref{cor1}}
 \ead{mazharul.islam1@northsouth.edu}
@@ -82,32 +82,34 @@
                  country={United States}}
 
 \begin{abstract}
-Retrieval-augmented generation (RAG) makes an external document pipeline part of a language
-model's trust boundary. We report a controlled evaluation of four independently switchable
-controls—source verification, retrieval filtering, provenance-weighted answer aggregation, and
-monitoring—under five poisoning attacks, including a manually constructed adaptive campaign.
-The campaign toggles six defense-aware transformations, and the experiment separates raw attack
-success from success on queries answered correctly in the clean baseline. On three small corpora
-(30--1,999 documents), using a MiniLM retriever and deterministic mock generator, the full stack
-does not reduce adaptive attack-attributable success on SQuAD: it is
-\casrAdaptiveSquadfull{} (95\% question-cluster bootstrap interval
-\casrCIAdaptiveSquadFullLow{}--\casrCIAdaptiveSquadFullHigh{}), compared with
-\casrAdaptiveSquadnone{} for no defense (\casrCIAdaptiveSquadNoneLow{}--
-\casrCIAdaptiveSquadNoneHigh{}). An HMAC-authenticated ingestion configuration reduces it to
-\casrAdaptiveSquadfullsigned{} (\casrCIAdaptiveSquadFullsignedLow{}--
-\casrCIAdaptiveSquadFullsignedHigh{}), under the explicit assumption that the attacker cannot
-obtain a valid tag from an authorized publisher; clean accuracy is \cleanAccSquadfullsigned{}
-versus \cleanAccSquadnone{} without defense. In a 100-question local confirmation, the full
-content-based stack lowers raw adaptive ASR from 0.38 to 0.29 on Qwen2.5 7B and from 0.33 to
-0.21 on Llama 3.1 8B, with clean accuracy changing from 0.77 to 0.73 and remaining 0.76,
-respectively. Clean abstention changes from 0.15 to 0.17 on Qwen and from 0.18 to 0.19 on
-Llama. Raw and attributable ASR Wilson intervals overlap in both models, so these one-seed
-observations are directional.
-Authenticated ingestion yields zero measured ASR under the protected-publisher assumption.
-The contribution is a reproducible,
-component-level security--utility evaluation of this configuration. It does not introduce a new
-defense or benchmark, and it does not establish a general robustness guarantee or
-enterprise-scale result.
+Retrieval-augmented generation (RAG) places an external document pipeline inside a language
+model's trust boundary, so any party able to write to the knowledge base can shape the answers
+users receive. Cryptographic provenance is widely treated as the answer to knowledge-base
+poisoning, and a layered evaluation reproduces that impression: authenticated ingestion cuts
+attack-attributable success against an adaptive poisoning campaign to
+\casrAdaptiveHotpotqafullsigned{} on HotpotQA, where content-based filtering alone leaves
+\casrAdaptiveHotpotqafull{}. That protection assumes every holder of a valid signing key is
+honest. A signature proves that an authorised publisher vouched for a document, not that the
+publisher is trustworthy, and aggregation compounds the gap by counting corroboration over
+document identifiers, so one publisher that uploads $k$ paraphrases of a claim counts as $k$
+witnesses. We therefore extend the adversary model with an authorised but compromised
+publisher, and propose provenance-weighted corroboration with independence discounting:
+evidence is partitioned into classes derived only from forgery-resistant provenance, namely the
+key that verifiably signed a document, its source, and its author; agreement is counted over
+classes rather than documents; and within a class only the strongest item contributes weight.
+Under a compromised publisher, authentication provides no protection, with attributable success
+rising from \casrAdaptiveSquadfullsigned{} to \compromiseSignedSquadBThree{} on SQuAD and from
+\casrAdaptiveHotpotqafullsigned{} to \compromiseSignedHotpotqaBThree{} on HotpotQA.
+Independence discounting lowers it to \compromiseSignedIndependentSquadBFive{} (95\%
+question-cluster interval
+\compromiseCIFullsignedindependentSquadBFiveLow{}--\compromiseCIFullsignedindependentSquadBFiveHigh{})
+against \compromiseSignedSquadBFive{} on SQuAD, with clean accuracy unchanged and more
+abstention; the benefit is absent against single-document attacks and narrows when poison
+displaces genuine evidence during retrieval. Signing a corpus therefore buys authenticity, not
+robustness, and a near-zero poisoning rate under authenticated ingestion may measure the
+assumption rather than the defense. Counting corroboration over independence classes needs no
+retraining and no additional retrieval, and removes the cheapest escalation available to a
+poisoning adversary.
 \end{abstract}
 
 \begin{keyword}
@@ -170,13 +172,40 @@ confirmation, the full content-based stack lowers raw adaptive ASR from 0.38 to 
 remains 0.76, respectively. The raw and attributable ASR Wilson intervals overlap in both models,
 so these one-seed results are directional rather than evidence of a reliable reduction. The result is evidence
 about these implementations and settings; it is not a claim
-that all content filters fail, that aggregation always amplifies poisoning, or that HMAC
-authentication solves malicious-authorized-publisher risk.
+that all content filters fail or that aggregation always amplifies poisoning.
 
-The contribution is empirical and reproducibility-focused rather than a new defense algorithm.
-Specifically, we provide:
+The apparent strength of authenticated ingestion is, however, contingent on its threat model.
+When the adversary is granted one authorised publisher's signing key, a capability the
+supply-chain literature treats as the expected failure mode of multi-party signing rather than
+as a worst case, attributable success under the signed configuration rises from
+\casrAdaptiveSquadfullsigned{} to \compromiseSignedSquadBThree{} on SQuAD and from
+\casrAdaptiveHotpotqafullsigned{} to \compromiseSignedHotpotqaBThree{} on HotpotQA at matched
+budgets. The protection is therefore a property of the assumption rather than of
+authentication. We trace what remains exploitable to the unit over which corroboration is
+counted. Because aggregation credits agreement across distinct document identifiers, and
+identifiers are chosen by whoever submits the document, an adversary buys apparent consensus
+with uploads alone. Counting agreement over provenance independence classes instead lowers
+attributable success to \compromiseSignedIndependentSquadBFive{} against
+\compromiseSignedSquadBFive{} at five injected documents per target, with clean accuracy
+unchanged.
+
+The contribution pairs a negative result about a widely assumed defense with a mechanism that
+addresses part of what the negative result exposes. Specifically, we provide:
 
 \begin{itemize}
+    \item An extension of the adversary model to an authorised but compromised publisher, and
+          the measurement that the protection attributed to authenticated ingestion does not
+          survive it (Section~\ref{sec:compromise});
+    \item Provenance-weighted corroboration with independence discounting, which counts
+          agreement over forgery-resistant provenance classes rather than submitter-chosen
+          identifiers, together with the ingestion change that records which key verified a
+          document so that proved origin is distinguishable from asserted origin
+          (Section~\ref{sec:layer3independent});
+    \item A characterisation of where corroboration-based defense can help at all, bounded
+          below by single-document attacks that fabricate no corroboration and above by
+          retrieval displacement, with a publisher-diversity control establishing that the
+          mechanism's benefit comes from bounding one party's weight rather than from honest
+          evidence gaining corroboration (Section~\ref{sec:compromise});
     \item A reproducible, revision-pinned implementation of four switchable controls in one RAG
           pipeline, with its assumptions and code exposed (Section~\ref{sec:architecture});
     \item A controlled one-factor-at-a-time diagnosis of six manually specified adaptive
@@ -261,6 +290,16 @@ open-domain QA, disinformation defenses exploit redundancy and query augmentatio
 isolate-then-aggregate; our results indicate that the corrupted-minority assumption underlying
 this family is precisely what a corroborating adaptive adversary attacks.
 
+The unit over which these schemes measure agreement is what makes that attack cheap. A
+certifiable bound stated over the number of corrupted \emph{passages} is a bound on how much
+the adversary must write, not on how many distinct parties must be subverted, and consistency
+or clustering checks computed over passage \emph{content} likewise do not ask where the
+agreeing passages came from. Neither family conditions agreement on provenance independence,
+so an adversary controlling a single writable channel can increase the apparent support for a
+claim simply by submitting more passages that assert it. Section~\ref{sec:layer3independent}
+changes the unit of corroboration from the passage to the independence class, which removes
+that escalation without introducing a new trust assumption.
+
 \subsection{Provenance and Supply-Chain Integrity}
 
 Outside machine learning, the response to untrusted artifacts entering a pipeline has converged
@@ -273,9 +312,16 @@ trusted-looking distribution channel~\citep{ohm2020backstabber}, is structurally
 the one we study, in which an adversary uploads to a connector the RAG deployment already
 trusts. Contemporary risk taxonomies for AI systems identify both data poisoning and prompt
 injection as primary risks~\citep{vassilev2024nistaml,owasp2025llm}. Our findings support
-testing authenticated ingestion as a trust-boundary control. Our HMAC experiment is one
-implementation under a protected-publisher assumption; it is not a new cryptographic result,
-and it does not establish that a malicious authorized publisher can be contained.
+testing authenticated ingestion as a trust-boundary control, but they also locate its limit.
+Signing establishes that an authorised publisher vouched for a document. It does not establish
+that the publisher is honest, and it carries no information about how many independent parties
+attest a claim. The supply-chain literature treats compromise of one authorised signer as the
+expected failure mode rather than a worst case, and transparency logs exist precisely because
+possession of a valid key is not evidence of good behaviour. We therefore evaluate signed
+ingestion under adversary $\mathcal{A}_2$ as well as $\mathcal{A}_1$, and find that its
+measured protection is contingent on the honest-publisher assumption rather than on
+authentication itself (Section~\ref{sec:compromise}). Our HMAC experiment remains one
+implementation and not a new cryptographic result.
 
 \subsection{RAG Security Benchmarks and Adaptive Defenses}
 
@@ -425,14 +471,41 @@ and $f_4$ observes the resulting stream without modifying it.
 
 \subsection{Adversary Model}
 
-We assume an adversary who can \textbf{write to the knowledge base} through an untrusted
-connector or a compromised upload account that has no signing authority, and who knows the
-target question. The trusted publisher that signs legitimate documents is a separate principal
-from the upload path. We grant the adversary knowledge of the defense: its architecture, filters,
-and thresholds. We do \emph{not} grant the adversary the ability to compromise the trusted
-publisher, read or forge its signing key, modify the generator's weights or retriever, or observe
-other users' queries. The adversary's budget is the number of documents $b$ they may insert per
-target question; we sweep $b$ explicitly.
+We distinguish two adversaries that differ in exactly one capability, whether they hold
+signing authority. Separating them matters because the entire measured benefit of
+authenticated ingestion turns on which one is assumed.
+
+\paragraph{Adversary $\mathcal{A}_1$: unauthorised writer.}
+$\mathcal{A}_1$ can \textbf{write to the knowledge base} through an untrusted connector or a
+compromised upload account that has \emph{no} signing authority, and knows the target question.
+The publishers that sign legitimate documents are separate principals from the upload path.
+$\mathcal{A}_1$ cannot read or forge any publisher's signing key. This is the adversary assumed
+by provenance-based defenses, and the one under which signed ingestion is reported as effective.
+
+\paragraph{Adversary $\mathcal{A}_2$: compromised authorised publisher.}
+$\mathcal{A}_2$ holds the signing key of one publisher among the $P$ that the deployment
+authorises. Its documents therefore carry signatures that \emph{verify}, and ingestion control
+admits them by construction: no allowlist, trust score, or signature check can exclude a
+correctly signed document from an authorised source. $\mathcal{A}_2$ models key theft, a
+malicious insider at a contributing publisher, and a publisher whose own upstream supply chain
+has been subverted. It does \emph{not} hold any other publisher's key, and because the
+signature covers document identity, source, and content jointly (Section~\ref{sec:layer1}), it
+cannot alter documents published by others without invalidating their tags.
+
+$\mathcal{A}_2$ is not an exotic escalation. Deployments that authenticate ingestion
+authorise many publishers, and compromise of one of them is the expected failure mode of any
+multi-party signing arrangement rather than a worst case. Prior provenance-based defenses
+exclude $\mathcal{A}_2$ by assumption, which is precisely why its omission is consequential:
+the protection those defenses report is contingent on an assumption that grows weaker as the
+number of authorised publishers grows.
+
+\paragraph{Common to both.}
+We grant both adversaries knowledge of the defense: its architecture, filters, and thresholds.
+We do \emph{not} grant either the ability to modify the generator's weights or the retriever,
+or to observe other users' queries. The adversary's budget is the number of documents $b$ it
+may insert per target question; we sweep $b$ explicitly. Unless stated otherwise, results
+reported for signed configurations are under $\mathcal{A}_1$, and
+Section~\ref{sec:compromise} reports the same configurations under $\mathcal{A}_2$.
 
 For these benchmark experiments, we operationalise target knowledge by giving the adversary
 the full QA question list and targeting every listed question. This is a batch-poisoning
@@ -493,7 +566,7 @@ possibly manipulated answer.
 \end{adjustwidth}
 \end{figure*}
 
-\subsection{Layer 1: Source Verification}
+\subsection{Layer 1: Source Verification}\label{sec:layer1}
 \label{sec:l1}
 
 Layer~1 decides what may enter the index. It applies, in order: a source allowlist; a minimum
@@ -645,6 +718,64 @@ what happens when the adversary supplies the matching documents.
 \State \Return representative answer of $g_1$
 \end{algorithmic}
 \end{algorithm}
+
+\subsection{Independence Discounting: Counting Corroboration Correctly}
+\label{sec:layer3independent}
+
+Equation~(\ref{eq:weight}) rewards a group whose passages carry distinct document identifiers.
+An identifier is chosen by whoever submits the document, so this rewards the one quantity an
+adversary controls for free. Writing the same claim into $k$ documents multiplies the
+redundancy bonus by up to $1 + \beta(k-1)$ and adds $k$ weighted terms to the sum, while
+costing the adversary nothing but $k$ uploads. We therefore replace the unit of corroboration.
+Agreement should be counted over the number of \emph{independent parties} that attest a claim,
+not the number of files that assert it.
+
+\paragraph{Independence classes.}
+For a passage $j$ let $\mathrm{doc}(j)$ be its document and define
+\begin{equation}
+\kappa(j) \;=\; \big(\mathrm{signer}(j),\; \mathrm{source}(j),\; \mathrm{author}(j)\big),
+\label{eq:indkey}
+\end{equation}
+where $\mathrm{signer}(j)$ is the identity of the key whose signature over $\mathrm{doc}(j)$
+Layer~1 \emph{verified}. Three points make $\kappa$ resistant to forgery. First,
+$\mathrm{signer}(j)$ is recorded by Layer~1 after a successful check and is never read from
+caller-supplied metadata, so a submitter cannot assert that its document was verified. Second,
+if a document carries a signature that no configured key validates, $\mathrm{signer}(j)$ takes
+the single value $\bot_{\mathrm{unver}}$; if it carries none, it takes the single value
+$\bot_{\mathrm{uns}}$. All unsigned documents therefore occupy \emph{one} class, so an
+unauthenticated adversary gains no corroboration from volume at all, whatever identifiers it
+chooses. Third, because the signature covers identity, source, and content jointly, an
+adversary cannot migrate a document into another publisher's class without invalidating it.
+
+\paragraph{Two-stage aggregation.}
+Writing $K(g) = \{\kappa(j) : j \in g\}$ for the classes present in group $g$, the group score
+of Equation~(\ref{eq:weight}) becomes
+\begin{equation}
+W_{\mathrm{ind}}(g) \;=\;
+\Big(\textstyle\sum_{k \in K(g)}\big[\max_{j \,:\, \kappa(j) = k} w_j
+\;+\; \delta \textstyle\sum_{j \,:\, \kappa(j) = k,\, j \neq j_k^{\star}} w_j\big]\Big)
+\cdot \big(1 + \beta\left(|K(g)| - 1\right)\big),
+\label{eq:indweight}
+\end{equation}
+where $w_j = \omega_j \cdot \max(\rho_j, \rho_{\min})^{\gamma} \cdot \phi_j$ as before,
+$j_k^{\star}$ is the strongest passage in class $k$, and $\delta \in [0,1]$ controls how much
+additional evidence from an already-counted party contributes. We take $\delta = 0$ throughout,
+so a party is represented by its single best passage and the redundancy bonus scales with the
+number of attesting parties rather than the number of files. Setting $\delta = 1$ and letting
+$\kappa(j) = \mathrm{doc}(j)$ recovers Equation~(\ref{eq:weight}) exactly, so identifier
+counting is the special case of this rule in which every document is assumed to be its own
+independent party. That configuration is the control arm in all experiments that follow.
+
+\paragraph{What this does and does not provide.}
+The mechanism removes a volume multiplier; it does not adjudicate truth. It bounds the
+weight any single party can accumulate within one answer group by that party's strongest
+passage, which holds whether the party is unsigned, carries an unverifiable signature, or holds
+a valid key, and therefore applies to adversary $\mathcal{A}_2$ as well as $\mathcal{A}_1$. It
+provides no benefit when the adversary submits a single document, since there is then no
+fabricated corroboration to discount, and it cannot help when poison displaces genuine evidence
+before aggregation is reached, because a class that was never retrieved cannot attest anything.
+Section~\ref{sec:compromise} measures both limits. The rule adds no model, no retrieval cost,
+and no trust assumption beyond those Layer~1 already makes.
 
 \subsection{Layer 4: Anomaly Monitoring}
 \label{sec:l4}
@@ -987,9 +1118,11 @@ HMAC-authenticated ingestion blocks the tested upload campaign. With Layer~1 req
 tag over the versioned envelope containing the document identifier, source identifier, and text,
 the adaptive attack's attributable success falls to \casrAdaptiveSquadfullsigned{} on SQuAD and
 \casrAdaptiveHotpotqafullsigned{} on HotpotQA. Clean accuracy is unchanged relative to the
-unsigned full stack in this experiment. This result assumes the attacker cannot access the
-shared HMAC key or request tags from an authorized publisher; it does not address malicious
-authorized publishers, key compromise, or replay.
+unsigned full stack in this experiment. This result holds for adversary $\mathcal{A}_1$ only:
+it assumes the attacker cannot access a signing key or request tags from an authorized
+publisher. Section~\ref{sec:compromise} evaluates the same configuration under
+$\mathcal{A}_2$, which holds one authorized publisher's key, and finds that the protection
+reported here does not survive that change. Replay is out of scope throughout.
 
 \input{tables/tab_full.tex}
 \subsection{Which Evasion Technique Matters}
@@ -1080,6 +1213,110 @@ imported into retrieval pipelines.
 \end{figure*}
 
 \input{tables/tab_provenance.tex}
+\subsection{When the Authorised Publisher Is the Adversary}
+\label{sec:compromise}
+
+Every signed-ingestion result reported so far assumes adversary $\mathcal{A}_1$, which holds no
+signing key. This subsection reports the same configurations under $\mathcal{A}_2$, which holds
+the key of one authorised publisher among eight. Its documents carry signatures that verify, so
+Layer~1 admits them by construction: the allowlist, the trust score, and the signature check
+all pass. Table~\ref{tab:compromise} and Figure~\ref{fig:compromise} give the results, with the
+adaptive attack at matched budgets.
+
+\paragraph{Authentication contributes nothing once a key is held.}
+At the budget used throughout the main results ($b=3$), attack-attributable success under the
+signed configuration rises from \casrAdaptiveSquadfullsigned{} to
+\compromiseSignedSquadBThree{}
+(\compromiseCIFullsignedSquadBThreeLow{}--\compromiseCIFullsignedSquadBThreeHigh{}) on SQuAD and
+from \casrAdaptiveHotpotqafullsigned{} to \compromiseSignedHotpotqaBThree{}
+(\compromiseCIFullsignedHotpotqaBThreeLow{}--\compromiseCIFullsignedHotpotqaBThreeHigh{}) on
+HotpotQA. At $b=8$ it reaches
+\compromiseSignedSquadBEight{} and \compromiseSignedHotpotqaBEight{}. The protection previously
+attributed to authenticated ingestion is therefore not a property of authentication. It is a
+property of the assumption that no authorised publisher is adversarial, and it disappears
+entirely when that assumption does. This is the paper's central negative result, and it applies
+to our own best-performing configuration.
+
+\paragraph{Identifier counting sells the adversary an escalation.}
+Under $\mathcal{A}_2$, attributable success grows monotonically with the number of documents the
+adversary writes: on SQuAD from \compromiseSignedSquadBOne{} at $b=1$ to
+\compromiseSignedSquadBEight{} at $b=8$, and on HotpotQA from \compromiseSignedHotpotqaBOne{} to
+\compromiseSignedHotpotqaBEight{}. Because Equation~(\ref{eq:weight}) counts corroboration over
+document identifiers, and identifiers are chosen by the submitter, this growth is purchased with
+uploads alone and not with any additional compromise.
+
+\paragraph{Independence discounting removes part of that escalation.}
+Replacing the unit of corroboration with the independence class of
+Equation~(\ref{eq:indweight}) lowers attributable success to
+\compromiseSignedIndependentSquadBFive{}
+(\compromiseCIFullsignedindependentSquadBFiveLow{}--\compromiseCIFullsignedindependentSquadBFiveHigh{})
+at $b=5$ on SQuAD, against \compromiseSignedSquadBFive{}
+(\compromiseCIFullsignedSquadBFiveLow{}--\compromiseCIFullsignedSquadBFiveHigh{}) under
+identifier counting, and to
+\compromiseSignedIndependentHotpotqaBFive{}
+(\compromiseCIFullsignedindependentHotpotqaBFiveLow{}--\compromiseCIFullsignedindependentHotpotqaBFiveHigh{})
+against \compromiseSignedHotpotqaBFive{}
+(\compromiseCIFullsignedHotpotqaBFiveLow{}--\compromiseCIFullsignedHotpotqaBFiveHigh{}) on
+HotpotQA. The two corpora differ in how much weight this result can carry. On SQuAD the
+intervals are disjoint, so the reduction is not attributable to query sampling. On HotpotQA
+they overlap, because attributable success there is conditioned on the roughly one fifth of
+multi-hop questions the generator answers correctly in the clean run, leaving a small
+denominator; the HotpotQA reduction is therefore directional and the SQuAD result is the one
+that supports the claim. Clean accuracy is unaffected
+(\compromiseCleanAccSignedIndependentSquadBFive{} against
+\compromiseCleanAccSignedSquadBFive{} on SQuAD). The reduction is paid for in abstention on
+attacked queries, which rises from \compromiseAbstainSignedSquadBFive{} to
+\compromiseAbstainSignedIndependentSquadBFive{}: denied a fabricated majority, the layer more
+often declines to answer rather than answering wrongly, which is the intended failure direction
+but is not free.
+
+\paragraph{The benefit is bounded at both ends.}
+At $b=1$ the two corroboration units coincide
+(\compromiseSignedSquadBOne{} against \compromiseSignedIndependentSquadBOne{} on SQuAD), as they
+must: a single document fabricates no corroboration, so there is nothing to discount. At $b=8$
+the advantage narrows again, to \compromiseSignedIndependentSquadBEight{} against
+\compromiseSignedSquadBEight{}. The mechanism operates on aggregation, and at high budgets the
+adversary's passages displace genuine evidence during retrieval, so the honest class is often
+absent from the candidate set before aggregation is reached. A class that was never retrieved
+cannot attest anything. The practical consequence is that independence discounting is a
+complement to retrieval-stage controls and not a substitute for them.
+
+\paragraph{The gain comes from denying volume, not from honest diversity.}
+The mechanism is motivated by independence, which invites the explanation that it works because
+honest evidence is attested by several publishers while the adversary is one. The diversity
+control in Figure~\ref{fig:diversity} does not support that explanation. Holding the budget
+fixed and varying the number of publishers contributing the corpus from one to sixteen leaves
+the effect unchanged on SQuAD, at \diversitySignedIndependentSquadPOne{} with a single
+publisher and \diversitySignedIndependentSquadPOneSix{} with sixteen, against
+\diversitySignedSquadPOneSix{} under identifier counting. On HotpotQA the difference between
+one publisher (\diversitySignedIndependentHotpotqaPOne{}) and sixteen
+(\diversitySignedIndependentHotpotqaPOneSix{}) is a single percentage point. The operative
+mechanism is therefore the bound that Equation~(\ref{eq:indweight}) places on the weight any one
+party can accumulate inside a single answer group, not a corroboration bonus accruing to honest
+evidence. We report this because it narrows the claim: the rule is best understood as removing
+an adversarial escalation rather than as rewarding genuine agreement, and a deployment should
+not expect its benefit to scale with how many publishers it authorises.
+
+\input{tables/tab_compromise.tex}
+
+\begin{figure*}[t]
+\includegraphics[width=\textwidth]{figures/fig13_compromise.pdf}
+\caption{Attack-attributable success against the adversary's upload budget under adversary
+$\mathcal{A}_2$, which holds one authorised publisher's signing key. Both curves are the same
+defense stack and differ only in whether corroboration is counted over document identifiers or
+over provenance independence classes. The slope of the upper curve is the escalation that
+identifier counting sells the adversary.\label{fig:compromise}}
+\end{figure*}
+
+\begin{figure*}[t]
+\includegraphics[width=\textwidth]{figures/fig14_diversity.pdf}
+\caption{Attack-attributable success against the number of independent publishers contributing
+the corpus, at a fixed budget of five poisoned documents per target under adversary
+$\mathcal{A}_2$. The gap between the two curves does not widen with publisher diversity, which
+locates the mechanism's benefit in the bound it places on any single party's weight rather than
+in corroboration accruing to honest evidence.\label{fig:diversity}}
+\end{figure*}
+
 \subsection{Detection Quality and Operating Point}
 \label{sec:res:detection}
 
@@ -1286,9 +1523,10 @@ The results support different, limited readings of the four controls. In this th
 allowlists and trust policy alone do not authenticate a source because the source identifier is
 caller-supplied, even though the server assigns the score and ignores any incoming score. The
 HMAC condition rejects documents whose tag was not generated by the
-trusted publisher, provided that the key and tag-generation path remain protected. This is a
-trust-boundary result for the tested pipeline, not a general guarantee against compromised or
-malicious authorized publishers.
+trusted publisher, provided that the key and tag-generation path remain protected. That proviso
+carries the result: Section~\ref{sec:compromise} removes it and the protection disappears, which
+is why we treat the unit over which corroboration is counted, rather than authentication, as the
+remaining lever against an adversary that can write to the knowledge base at all.
 
 The retrieval filter performs well on the tested static payloads and poorly on the manual
 adaptive campaign at its default threshold. The threshold sweep shows the security and clean
@@ -1301,10 +1539,12 @@ Layer~3 reduces some static attack outcomes but does not prevent prompt injectio
 instructions in an isolated passage can still shape that passage's answer. Its answer-group
 margin causes abstention when competing groups have similar weight, producing the largest
 clean-accuracy cost among individual layers. Under the adaptive campaign, distinct document
-identifiers can increase the attacker's answer-group score. Since the implementation does not
-verify independent source lineage, the experiment does not evaluate genuine independent
-corroboration. These outcomes are specific to this weighting rule and threat model, not to every
-answer aggregator.
+identifiers can increase the attacker's answer-group score. Replacing that unit with the
+provenance independence class of Section~\ref{sec:layer3independent} removes the escalation and
+reduces attributable success under a compromised publisher, though the diversity control shows
+the gain comes from bounding one party's contribution rather than from honest evidence earning
+corroboration, so the rule should not be read as evaluating genuine independent agreement. These
+outcomes are specific to this weighting rule and threat model, not to every answer aggregator.
 
 \subsection{Operational Implications}
 
@@ -1314,8 +1554,14 @@ secret; deployments with separate publishers and verifiers may prefer public-key
 Either design also needs publisher authorization, key rotation and revocation, and freshness or
 replay controls. Content filters can add detection and response signals, but their contribution
 should be measured against rewritten payloads and reported with false-positive and clean-utility
-costs. Aggregation that rewards repeated answers should use verifiable lineage rather than
-document identifiers as a proxy for independent evidence.
+costs. Aggregation that rewards repeated answers should count parties whose identity has been
+proved rather than submitter-chosen document identifiers, which is what
+Equation~(\ref{eq:indweight}) implements at the cost of additional abstention. Because that
+rule stops helping once poison displaces genuine passages during retrieval, it should be
+deployed alongside retrieval-stage limits on how much of a candidate set any one party may
+occupy, and because signing cannot exclude an authorized adversary, publisher authorization
+should be accompanied by per-publisher quotas and revocation rather than treated as sufficient
+on its own.
 
 \subsection{Relation to Prior Results}
 
@@ -1358,11 +1604,26 @@ intervals. The retrieval score divides each detector statistic by a hand-set thr
 not empirically calibrated. Confidence intervals for the pinned main study condition on three
 seeds, while the local confirmation has one seed and 100 questions per cell.
 
-The HMAC experiment assumes a protected shared key and a trusted tag-generation service. It
-does not test authorized-publisher compromise, malicious publishers, key compromise, replay,
-freshness, or revocation. It also does not compare HMAC with public-key signatures or measure
-the end-to-end operational cost of key management. Main-study latencies exclude model inference
+The HMAC experiment assumes a protected shared key and a trusted tag-generation service under
+adversary $\mathcal{A}_1$. Authorized-publisher compromise is evaluated separately under
+$\mathcal{A}_2$ (Section~\ref{sec:compromise}), but replay, freshness, and revocation are not
+tested, and we neither compare HMAC with public-key signatures nor measure the end-to-end
+operational cost of key management. Main-study latencies exclude model inference
 and network overhead; local-model timings are cache-dependent and are not interpreted.
+
+Independence discounting carries its own limits. Its benefit is bounded below by attacks that
+inject a single document, where no corroboration is fabricated, and above by budgets at which
+poison displaces genuine evidence during retrieval, so it complements retrieval-stage controls
+rather than replacing them. The publisher-diversity control shows that its benefit does not
+grow with the number of authorized publishers, so a deployment should not expect it to scale
+with corpus diversity. The reduction is paid for in abstention on attacked queries, which is
+the intended failure direction but is a real utility cost. Independence classes are only as
+meaningful as the provenance a deployment actually records: where every document shares one
+signer, one source, and one author, the partition is trivial and the rule reduces to taking a
+single party's strongest passage. The mechanism is evaluated with the deterministic mock
+generator and has not been confirmed on served models, so its effect under a susceptible
+generator remains open. Finally, it addresses the weight an adversary accumulates and not the
+truth of any claim; it cannot distinguish a well-supported falsehood from a fact.
 
 \section{Conclusions}
 \label{sec:conclusions}
@@ -1377,12 +1638,27 @@ intervals, little change in clean accuracy, and one- to two-point increases in c
 Authenticated ingestion yields zero measured ASR
 in these 100-question runs under the protected-publisher assumption (Table~\ref{tab:local-model}).
 
-These findings do not establish a generally effective RAG defense, enterprise-scale behavior,
-or novelty over existing adaptive RAG studies. They show that, in the tested configuration,
-metadata trust and surface filtering were insufficient against the constructed attacker, while
-HMAC authentication blocked uploads that lacked a trusted tag. The practical implication is to
-make publisher identity and document integrity explicit at ingestion, and to evaluate any
-content-based or aggregation layer with its clean-utility cost and threat-model assumptions.
+That last protection, however, is an artefact of its threat model. Granting the adversary one
+authorized publisher's signing key raises attributable success under the same signed
+configuration to \compromiseSignedSquadBThree{} on SQuAD and \compromiseSignedHotpotqaBThree{}
+on HotpotQA, and to \compromiseSignedSquadBEight{} and \compromiseSignedHotpotqaBEight{} at
+eight documents per target. Signing a corpus buys authenticity, not robustness. What remains
+exploitable is the unit over which corroboration is counted: crediting agreement across
+distinct document identifiers lets an adversary purchase apparent consensus with uploads alone.
+Counting agreement over provenance independence classes instead reduces attributable success to
+\compromiseSignedIndependentSquadBFive{} against \compromiseSignedSquadBFive{} at five
+documents per target, with clean accuracy unchanged, at the cost of more abstention; the
+benefit is absent against single-document attacks and narrows where poison displaces genuine
+evidence during retrieval.
+
+These findings do not establish a generally effective RAG defense or enterprise-scale behavior.
+They show that, in the tested configuration, metadata trust and surface filtering were
+insufficient against the constructed attacker, that authentication excluded only adversaries
+without keys, and that an aggregation rule counting parties rather than files removes part of
+what authentication leaves open. The practical implications are to make publisher identity and
+document integrity explicit at ingestion, to count corroboration over parties whose identity
+has been proved rather than over submitter-chosen identifiers, and to report any defense
+together with the threat-model assumption on which its measured protection depends.
 
 \section*{Declaration of generative AI and AI-assisted technologies in the writing process}
 

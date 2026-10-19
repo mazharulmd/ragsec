@@ -120,9 +120,12 @@ CONFIG_LABELS = {
     "L1": "L1 source verification",
     "L2": "L2 retrieval filtering",
     "L3": "L3 robust aggregation",
+    "L3_independent": "L3 + independence discounting",
     "L4": "L4 monitoring",
     "full": "Full defense",
+    "full_independent": "Full defense + independence discounting",
     "full_signed": "Full defense + HMAC-authenticated ingestion",
+    "full_signed_independent": "Authenticated ingestion + independence discounting",
 }
 
 EVASION_LABELS = {
@@ -151,20 +154,38 @@ def defense_stack(name: str, dataset: str) -> list[dict[str, Any]]:
     }
     l2 = {"name": "retrieval_filter", "params": {"mode": "drop"}}
     l3 = {"name": "robust_aggregation", "params": {}}
+    # Layer 3 with corroboration counted over provenance independence classes rather than
+    # document identifiers. This is the proposed mechanism; plain l3 above is its control.
+    l3_independent = {
+        "name": "robust_aggregation",
+        "params": {"independence_discounting": True, "within_class_discount": 0.0},
+    }
     l4 = {"name": "monitoring", "params": {"window_size": 50, "drift_threshold": 0.3}}
     return {
         "none": [],
         "L1": [l1],
         "L2": [l2],
         "L3": [l3],
+        "L3_independent": [l3_independent],
         "L4": [l4],
         "full": [l1, l2, l3, l4],
+        "full_independent": [l1, l2, l3_independent, l4],
         "full_signed": [l1_signed, l2, l3, l4],
+        "full_signed_independent": [l1_signed, l2, l3_independent, l4],
     }[name]
 
 
 #: Layer 1 only enforces signatures when the legitimate corpus is actually signed.
-SIGNED_CONFIGS = {"full_signed"}
+SIGNED_CONFIGS = {"full_signed", "full_signed_independent"}
+
+#: Independent publishers contributing the corpus in the compromised-publisher study. The
+#: measured effect is invariant to this above two, so the value is a presentational default
+#: rather than a tuned parameter; the diversity study varies it explicitly.
+DEFAULT_PUBLISHERS = 8
+
+#: Poisoned documents per target in the diversity study, held at the budget where the
+#: mechanism's effect is largest so that a dependence on diversity would be visible if present.
+DIVERSITY_BUDGET = 5
 
 #: Per-source quota used in the ingestion ladder, as a multiple of the legitimate corpus size.
 #: A source is permitted to grow the corpus it already contributed by 50%; anything much
@@ -194,6 +215,8 @@ def base_config(
     include_clean_run: bool = True,
     follow_injections: bool = True,
     embedder: str = "sentence-transformers",
+    publishers: int = 1,
+    compromised_publisher: bool = False,
 ) -> ExperimentConfig:
     embedder_spec: dict[str, Any] = {"name": embedder}
     if embedder in {"sentence-transformers", "st"}:
@@ -210,6 +233,8 @@ def base_config(
         output_dir=None,
         include_clean_run=include_clean_run,
         sign_corpus=config in SIGNED_CONFIGS,
+        publishers=publishers,
+        compromised_publisher=compromised_publisher and config in SIGNED_CONFIGS,
     )
 
 
@@ -450,7 +475,7 @@ def run_study(
             identifier = cell_id(cell)
             query_path = (
                 query_records_path(out_path, identifier)
-                if cell.study in {"main", "confirmation"}
+                if cell.study in {"main", "confirmation", "compromise"}
                 else None
             )
             if identifier in done and (query_path is None or query_path.exists()):
@@ -545,6 +570,72 @@ def study_budget(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                                 {"name": "poisoned_rag", "n_per_target": n},
                                 {"name": "adaptive_poison", "n_per_target": n},
                             ],
+                        ),
+                    )
+
+
+def study_compromise(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
+    """Attack success when the adversary holds an authorised publisher's signing key.
+
+    Signed ingestion owes its measured protection to an assumption the threat model states and
+    never tests: that every holder of a valid key is honest. This study drops it. The
+    adversary's documents carry a signature that verifies, so Layer 1 admits them by
+    construction, and what remains is whether corroboration is counted over documents or over
+    independent provenance classes.
+    """
+    for dataset in datasets:
+        for config in ("full_signed", "full_signed_independent"):
+            for n in (1, 2, 3, 5, 8):
+                for seed in seeds:
+                    yield Cell(
+                        study="compromise",
+                        key={
+                            "dataset": dataset,
+                            "config": config,
+                            "n_per_target": n,
+                            "seed": seed,
+                        },
+                        config=base_config(
+                            dataset,
+                            config,
+                            seed,
+                            attacks=[{"name": "adaptive_poison", "n_per_target": n}],
+                            publishers=DEFAULT_PUBLISHERS,
+                            compromised_publisher=True,
+                        ),
+                    )
+
+
+def study_diversity(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
+    """Does independence discounting depend on honest publishers being diverse?
+
+    The mechanism is justified by independence, so its benefit ought to track how many
+    independent publishers actually contribute the corpus. Varying that count with everything
+    else fixed separates two explanations: honest evidence gaining corroboration across
+    publishers, against the adversary simply losing a volume multiplier inside its own
+    evidence group.
+    """
+    for dataset in datasets:
+        for config in ("full_signed", "full_signed_independent"):
+            for publishers in (1, 2, 4, 8, 16):
+                for seed in seeds:
+                    yield Cell(
+                        study="diversity",
+                        key={
+                            "dataset": dataset,
+                            "config": config,
+                            "publishers": publishers,
+                            "seed": seed,
+                        },
+                        config=base_config(
+                            dataset,
+                            config,
+                            seed,
+                            attacks=[
+                                {"name": "adaptive_poison", "n_per_target": DIVERSITY_BUDGET}
+                            ],
+                            publishers=publishers,
+                            compromised_publisher=True,
                         ),
                     )
 
@@ -761,6 +852,8 @@ STUDIES = {
     "main": study_main,
     "evasion": study_evasion,
     "budget": study_budget,
+    "compromise": study_compromise,
+    "diversity": study_diversity,
     "threshold": study_threshold,
     "backfill": study_backfill,
     "backfill_strict": study_backfill_strict,

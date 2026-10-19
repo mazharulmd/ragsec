@@ -26,6 +26,9 @@ QUERY_FIELDS = (
     "attack_success",
     "baseline_correct",
     "target_token_f1",
+    # The compromised-publisher study's intervals are computed per upload budget, because
+    # attack success depends on it, so the budget has to survive the compact export.
+    "n_per_target",
 )
 
 

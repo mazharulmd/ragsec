@@ -18,6 +18,7 @@ from dataclasses import dataclass, replace
 
 from ragsec.core.defense import DefenseLayer
 from ragsec.core.models import Document, content_hash
+from ragsec.defenses.independence import VERIFIED_SIGNER_KEY
 
 _SIGNATURE_RE = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -63,6 +64,8 @@ class SourceVerificationLayer(DefenseLayer):
         require_signature: bool = False,
         dedupe: bool = True,
         max_documents_per_source: int | None = None,
+        signer_id: str = "ingestion-key",
+        hmac_keys: dict[str, bytes] | None = None,
     ) -> None:
         self.allowed_sources = set(allowed_sources) if allowed_sources is not None else None
         self.source_trust = dict(source_trust or {})
@@ -76,10 +79,21 @@ class SourceVerificationLayer(DefenseLayer):
             raise ValueError("source_trust scores must be in [0, 1]")
         self.hmac_key = hmac_key
         self.require_signature = require_signature
-        if require_signature and hmac_key is None:
+        #: Accepted publisher keys, as signer name to key. A real deployment authorises several
+        #: independent publishers, so verification has to say *which* key vouched for a
+        #: document, not merely that some key did: that identity is what Layer 3 later treats
+        #: as a unit of corroboration.
+        self.keyring: dict[str, bytes] = dict(hmac_keys or {})
+        if hmac_key is not None:
+            self.keyring.setdefault(signer_id, hmac_key)
+        if require_signature and not self.keyring:
             raise ValueError("hmac_key is required when require_signature is enabled")
         self.dedupe = dedupe
         self.max_documents_per_source = max_documents_per_source
+        #: Name recorded against documents whose signature this layer actually verified.
+        #: Aggregation uses it to tell evidence whose origin was proved from evidence whose
+        #: origin was merely asserted, which an adversary can forge for free.
+        self.signer_id = signer_id
         self.rejections: list[IngestRejection] = []
         self._seen_hashes: set[str] = set()
         self._per_source: Counter[str] = Counter()
@@ -102,10 +116,30 @@ class SourceVerificationLayer(DefenseLayer):
             if reason is not None:
                 self.rejections.append(IngestRejection(doc.doc_id, source, reason))
                 continue
+            verified_by = self._verifying_signer(trusted_doc)
+            if verified_by is not None:
+                trusted_doc.provenance.extra[VERIFIED_SIGNER_KEY] = verified_by
+            else:
+                # Never let a caller assert that their document was verified.
+                trusted_doc.provenance.extra.pop(VERIFIED_SIGNER_KEY, None)
             self._seen_hashes.add(content_hash(trusted_doc.text))
             self._per_source[source] += 1
             accepted.append(trusted_doc)
         return accepted
+
+    def _verifying_signer(self, doc: Document) -> str | None:
+        """Name the configured key whose signature on ``doc`` holds, or ``None``.
+
+        An unchecked signature is not evidence of anything, so a document carrying a
+        signature this layer holds no key for verifies as nothing.
+        """
+        signature = doc.provenance.signature
+        if not signature or not isinstance(signature, str):
+            return None
+        for name, key in self.keyring.items():
+            if hmac.compare_digest(signature, sign_document(doc, key)):
+                return name
+        return None
 
     def _reject_reason(self, doc: Document) -> str | None:
         source = doc.provenance.source_id
@@ -117,10 +151,10 @@ class SourceVerificationLayer(DefenseLayer):
         if signature is None:
             if self.require_signature:
                 return "missing signature"
-        elif self.hmac_key is not None:
+        elif self.keyring:
             if not isinstance(signature, str) or not _SIGNATURE_RE.fullmatch(signature):
                 return "invalid signature"
-            if not hmac.compare_digest(signature, sign_document(doc, self.hmac_key)):
+            if self._verifying_signer(doc) is None:
                 return "invalid signature"
         if self.dedupe and content_hash(doc.text) in self._seen_hashes:
             return "duplicate content"

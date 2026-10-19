@@ -8,16 +8,31 @@ several independent documents receive a redundancy bonus. If no candidate wins b
 layer abstains, which is the safe failure mode for a poisoning attack.
 
 Inspired by RobustRAG (Xiang et al., 2024) with the addition of provenance-aware weighting.
+
+Counting documents, however, is not the same as counting evidence. An adversary who can write
+to the knowledge base chooses how many document identifiers their claim arrives under, so a
+redundancy bonus keyed on identifiers rewards whoever uploads most. Enabling
+``independence_discounting`` groups passages into provenance independence classes (see
+:mod:`ragsec.defenses.independence`) and aggregates in two stages: within a class the strongest
+member counts in full and the rest are discounted, and only across classes does agreement earn
+the redundancy bonus. Three differently worded documents from one compromised connector then
+count as one voice rather than three.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ragsec.core.defense import DefenseLayer
 from ragsec.core.llm import SYSTEM_PROMPT, BaseLLM, build_prompt, content_tokens
 from ragsec.core.models import RetrievedChunk
+from ragsec.defenses.independence import (
+    DEFAULT_EPOCH_SECONDS,
+    DEFAULT_FIELDS,
+    independence_key,
+)
 
 ABSTAIN_ANSWER = "I cannot determine a reliable answer from the retrieved sources."
 
@@ -51,9 +66,44 @@ class AnswerGroup:
     def representative(self) -> IsolatedAnswer:
         return max(self.members, key=lambda m: m.weight)
 
-    def total_weight(self, redundancy_bonus: float) -> float:
-        base = sum(m.weight for m in self.members)
-        return base * (1.0 + redundancy_bonus * (len(self.sources) - 1))
+    def classes(
+        self,
+        fields: Sequence[str] = DEFAULT_FIELDS,
+        epoch_seconds: float = DEFAULT_EPOCH_SECONDS,
+    ) -> dict[tuple[str, ...], list[IsolatedAnswer]]:
+        """Partition the members into provenance independence classes."""
+        grouped: dict[tuple[str, ...], list[IsolatedAnswer]] = {}
+        for member in self.members:
+            key = independence_key(member.chunk.chunk, fields, epoch_seconds)
+            grouped.setdefault(key, []).append(member)
+        return grouped
+
+    def total_weight(
+        self,
+        redundancy_bonus: float,
+        independence_discounting: bool = False,
+        within_class_discount: float = 0.0,
+        fields: Sequence[str] = DEFAULT_FIELDS,
+        epoch_seconds: float = DEFAULT_EPOCH_SECONDS,
+    ) -> float:
+        """Weight of this answer, optionally discounting non-independent corroboration.
+
+        Without discounting, every member contributes its full weight and the bonus scales
+        with the number of distinct document identifiers, so an adversary gains linearly in
+        the number of documents they upload. With discounting, each independence class
+        contributes its strongest member in full plus ``within_class_discount`` of the rest,
+        and the bonus scales with the number of classes.
+        """
+        if not independence_discounting:
+            base = sum(m.weight for m in self.members)
+            return base * (1.0 + redundancy_bonus * (len(self.sources) - 1))
+
+        grouped = self.classes(fields, epoch_seconds)
+        base = 0.0
+        for members in grouped.values():
+            weights = sorted((m.weight for m in members), reverse=True)
+            base += weights[0] + within_class_discount * sum(weights[1:])
+        return base * (1.0 + redundancy_bonus * (len(grouped) - 1))
 
 
 def _jaccard(a: set[str], b: set[str]) -> float:
@@ -75,6 +125,10 @@ class RobustAggregationLayer(DefenseLayer):
         min_relevance: float = 0.05,
         relevance_power: float = 2.0,
         abstain_answer: str = ABSTAIN_ANSWER,
+        independence_discounting: bool = False,
+        within_class_discount: float = 0.0,
+        independence_fields: Sequence[str] = DEFAULT_FIELDS,
+        epoch_seconds: float = DEFAULT_EPOCH_SECONDS,
     ) -> None:
         self.margin = margin
         self.min_weight = min_weight
@@ -84,6 +138,14 @@ class RobustAggregationLayer(DefenseLayer):
         self.min_relevance = min_relevance
         self.relevance_power = relevance_power
         self.abstain_answer = abstain_answer
+        if not 0.0 <= within_class_discount <= 1.0:
+            raise ValueError("within_class_discount must lie in [0, 1]")
+        #: Off by default so that the layer reproduces identifier-counting aggregation, which
+        #: is the control arm the independence results are measured against.
+        self.independence_discounting = independence_discounting
+        self.within_class_discount = within_class_discount
+        self.independence_fields = tuple(independence_fields)
+        self.epoch_seconds = epoch_seconds
         self.last_groups: list[tuple[float, AnswerGroup]] = []
         self.last_isolated: list[IsolatedAnswer] = []
         self.selected_chunk_ids: tuple[str, ...] = ()
@@ -154,7 +216,19 @@ class RobustAggregationLayer(DefenseLayer):
         self.last_isolated = self._isolate(query, retrieved, llm)
         groups = self._group(self.last_isolated)
         ranked = sorted(
-            ((g.total_weight(self.redundancy_bonus), g) for g in groups),
+            (
+                (
+                    g.total_weight(
+                        self.redundancy_bonus,
+                        self.independence_discounting,
+                        self.within_class_discount,
+                        self.independence_fields,
+                        self.epoch_seconds,
+                    ),
+                    g,
+                )
+                for g in groups
+            ),
             key=lambda item: item[0],
             reverse=True,
         )

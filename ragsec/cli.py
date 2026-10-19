@@ -272,10 +272,17 @@ def build_parser() -> argparse.ArgumentParser:
             "inside a provider's free-tier request cap"
         ),
     )
+    from ragsec.eval.suite import CONFIG_LABELS, CONFIRMATION_CONFIGS
+
     p_suite.add_argument(
         "--confirmation-configs", nargs="+", default=None,
-        choices=("none", "L1", "L2", "L3", "L4", "full", "full_signed"),
-        help="defense configurations for the confirmation study (default: all seven)",
+        # Taken from the suite's own configurations so a newly added one is selectable here
+        # without a second edit.
+        choices=tuple(CONFIG_LABELS),
+        help=(
+            "defense configurations for the confirmation study "
+            f"(default: {' '.join(CONFIRMATION_CONFIGS)})"
+        ),
     )
     p_suite.set_defaults(func=cmd_suite)
 

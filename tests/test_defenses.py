@@ -38,6 +38,7 @@ from ragsec.defenses import (
     js_divergence,
     sign_document,
 )
+from ragsec.defenses.independence import VERIFIED_SIGNER_KEY
 
 CLEAN = [
     "Paris is the capital and largest city of France.",
@@ -160,8 +161,32 @@ def test_source_verification_signatures() -> None:
     bad.provenance.signature = sign_document(bad, key)
     bad.text = "tampered"
     missing = Document(text="unsigned")
-    assert layer.on_ingest([good, bad, missing]) == [good]
+    accepted = layer.on_ingest([good, bad, missing])
+    assert [d.doc_id for d in accepted] == [good.doc_id]
+    assert accepted[0].text == good.text
     assert {r.reason for r in layer.rejections} == {"invalid signature", "missing signature"}
+
+
+def test_verified_signature_is_recorded_on_the_accepted_document() -> None:
+    """Aggregation needs to know whose key vouched for a document, not merely that one did."""
+    key = b"secret-key"
+    layer = SourceVerificationLayer(hmac_key=key, signer_id="corpus-key")
+    signed = Document(text="signed")
+    signed.provenance.signature = sign_document(signed, key)
+    unsigned = Document(text="plain")
+
+    accepted = {d.text: d for d in layer.on_ingest([signed, unsigned])}
+    assert accepted["signed"].provenance.extra[VERIFIED_SIGNER_KEY] == "corpus-key"
+    assert VERIFIED_SIGNER_KEY not in accepted["plain"].provenance.extra
+
+
+def test_a_claimed_verification_marker_is_not_trusted() -> None:
+    """An uploader must not be able to assert that their own document was verified."""
+    layer = SourceVerificationLayer()
+    forged = Document(text="claims to be verified")
+    forged.provenance.extra[VERIFIED_SIGNER_KEY] = "corpus-key"
+    accepted = layer.on_ingest([forged])
+    assert VERIFIED_SIGNER_KEY not in accepted[0].provenance.extra
 
 
 def test_source_verification_rejects_malformed_signature_without_raising() -> None:

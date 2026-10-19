@@ -36,6 +36,7 @@ C_DEFENSE = "#1a6fa3"     # defended configuration
 C_SIGNED = "#117a54"      # cryptographically bound configuration
 C_NEUTRAL = "#6b6b6b"
 C_UTILITY = "#b8770a"     # benign utility
+C_INDEP = "#7d3c98"       # corroboration counted over independence classes
 C_GRID = "#d8d8d8"
 
 CONFIG_COLORS = {
@@ -46,6 +47,9 @@ CONFIG_COLORS = {
     "L4": C_NEUTRAL,
     "full": C_DEFENSE,
     "full_signed": C_SIGNED,
+    "L3_independent": "#a569bd",
+    "full_independent": C_INDEP,
+    "full_signed_independent": C_INDEP,
 }
 
 ATTACK_ORDER = [
@@ -1855,6 +1859,7 @@ def macros(
     out_dir: Path,
     query_uncertainty: Sequence[Row] = (),
     local_models: Row | None = None,
+    compromise_uncertainty: Sequence[Row] = (),
 ) -> Path:
     main = studies.get("main", [])
     evasion = studies.get("evasion", [])
@@ -2001,6 +2006,59 @@ def macros(
                         if hit:
                             macro(f"budget{aname}{cname}{tag}B{n}", f"{hit[0]:.2f}")
 
+    # Compromised authorised publisher. The pair of interest is the same stack under the two
+    # corroboration units, so both are emitted at every budget, together with the abstention
+    # that independence discounting trades for the reduction.
+    compromise = studies.get("compromise", [])
+    if compromise:
+        budgets = sorted({r["n_per_target"] for r in compromise})
+        for dataset in {r["dataset"] for r in compromise}:
+            tag = dataset.capitalize()
+            for config, cname in (("full_signed", "Signed"),
+                                  ("full_signed_independent", "SignedIndependent")):
+                subset = [r for r in compromise
+                          if r["dataset"] == dataset and r["config"] == config]
+                attacked_rows = [r for r in subset if r["attack"] != "clean"]
+                pooled = seed_summary(attacked_rows, ["n_per_target"],
+                                      "conditional_asr", "n_baseline_correct")
+                # Abstention under attack is the quantity of interest: denied a fabricated
+                # majority, the layer should decline rather than return the poison. Clean rows
+                # carry n_attacked = 0, so they cannot be pooled on the attacked denominator.
+                abstained = seed_summary(attacked_rows, ["n_per_target"],
+                                         "abstention_rate", "n_attacked")
+                benign = [r for r in subset if r["attack"] == "clean"]
+                clean = seed_summary(benign, ["n_per_target"], "clean_accuracy", "n_clean")
+                for n in budgets:
+                    hit = pooled.get((n,))
+                    if hit:
+                        macro(f"compromise{cname}{tag}B{n}", f"{hit[0]:.2f}")
+                    abst = abstained.get((n,))
+                    if abst:
+                        macro(f"compromiseAbstain{cname}{tag}B{n}", f"{abst[0]:.2f}")
+                    acc = clean.get((n,))
+                    if acc:
+                        macro(f"compromiseCleanAcc{cname}{tag}B{n}", f"{acc[0]:.2f}")
+
+    # Publisher-diversity control: whether the mechanism's benefit tracks how many independent
+    # publishers actually contribute the corpus.
+    diversity = studies.get("diversity", [])
+    if diversity:
+        counts = sorted({r["publishers"] for r in diversity})
+        for dataset in {r["dataset"] for r in diversity}:
+            tag = dataset.capitalize()
+            for config, cname in (("full_signed", "Signed"),
+                                  ("full_signed_independent", "SignedIndependent")):
+                pooled = seed_summary(
+                    [r for r in diversity
+                     if r["dataset"] == dataset and r["config"] == config
+                     and r["attack"] != "clean"],
+                    ["publishers"], "conditional_asr", "n_baseline_correct",
+                )
+                for publishers in counts:
+                    hit = pooled.get((publishers,))
+                    if hit:
+                        macro(f"diversity{cname}{tag}P{publishers}", f"{hit[0]:.2f}")
+
     # Over-retrieval sweep at both operating points, at the extremes of the multiplier range.
     static_attacks = [a for a in ATTACK_ORDER if a != "adaptive_poison"]
     for study, tag in (("backfill", "Default"), ("backfill_strict", "Strict")):
@@ -2053,6 +2111,22 @@ def macros(
                     macro(f"{metric}CIAdaptiveSquad{config}{edge}", f"{row[key]:.2f}")
         if row.get("target_token_f1") is not None:
             macro(f"targetTokenFAdaptiveSquad{config}", f"{row['target_token_f1']:.2f}")
+    # The compromised-publisher comparison is the paper's central claim, so it carries the
+    # same question-cluster intervals as the primary adaptive result rather than point
+    # estimates alone.
+    for row in compromise_uncertainty:
+        if row.get("attack") == "clean":
+            continue
+        config = str(row.get("config", "")).replace("_", "").capitalize()
+        dataset = str(row.get("dataset", "")).capitalize()
+        budget = row.get("n_per_target")
+        if not config or not dataset or budget is None:
+            continue
+        for edge, key in (("Low", "conditional_asr_ci_low"),
+                          ("High", "conditional_asr_ci_high")):
+            if row.get(key) is not None:
+                macro(f"compromiseCI{config}{dataset}B{budget}{edge}", f"{row[key]:.2f}")
+
     if local_models:
         aliases = {
             "qwen2.5-0.5b-local": "Qwen",
@@ -2120,12 +2194,144 @@ def verify_macros(body: Path, macros: Path) -> list[str]:
     return sorted(candidates - defined - _KNOWN_TEX_MACROS)
 
 
+def fig_compromise(rows: list[Row], out_dir: Path) -> Path:
+    """Attack success against upload budget when the adversary holds a publisher key.
+
+    The two curves are the same stack differing only in the unit of corroboration, so the gap
+    between them is the mechanism's effect and the slope of the upper curve is the escalation
+    it removes.
+    """
+    import matplotlib.pyplot as plt
+
+    datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
+    values = seed_summary([r for r in rows if r["attack"] != "clean"],
+                          ["dataset", "config", "n_per_target"],
+                          "conditional_asr", "n_baseline_correct")
+    budgets = sorted({r["n_per_target"] for r in rows})
+    series = [
+        ("full_signed", C_SIGNED, "^", "-"),
+        ("full_signed_independent", C_INDEP, "o", "--"),
+    ]
+    fig, axes = plt.subplots(1, len(datasets), figsize=(7.1, 2.5), squeeze=False, sharey=True)
+    for ax, dataset in zip(axes[0], datasets, strict=False):
+        for config, color, marker, ls in series:
+            xs, ys = [], []
+            for n in budgets:
+                hit = values.get((dataset, config, n))
+                if hit is not None:
+                    xs.append(n)
+                    ys.append(hit[0])
+            if xs:
+                ax.plot(xs, ys, marker=marker, linestyle=ls, color=color,
+                        label=CONFIG_LABELS[config])
+        ax.set_xticks(budgets)
+        ax.set_xticklabels([str(b) for b in budgets])
+        ax.set_xlabel("Poisoned documents per target")
+        ax.set_ylim(-0.04, 1.06)
+        ax.set_title(DATASET_LABELS[dataset], fontsize=8.5)
+    axes[0][0].set_ylabel("Attributable attack success rate")
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, ncol=2, loc="lower center", bbox_to_anchor=(0.5, -0.20),
+               fontsize=6.8)
+    return _save(fig, out_dir, "fig13_compromise")
+
+
+def fig_diversity(rows: list[Row], out_dir: Path) -> Path:
+    """Attack success against the number of independent publishers contributing the corpus."""
+    import matplotlib.pyplot as plt
+
+    datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
+    values = seed_summary([r for r in rows if r["attack"] != "clean"],
+                          ["dataset", "config", "publishers"],
+                          "conditional_asr", "n_baseline_correct")
+    counts = sorted({r["publishers"] for r in rows})
+    series = [
+        ("full_signed", C_SIGNED, "^", "-"),
+        ("full_signed_independent", C_INDEP, "o", "--"),
+    ]
+    fig, axes = plt.subplots(1, len(datasets), figsize=(7.1, 2.5), squeeze=False, sharey=True)
+    for ax, dataset in zip(axes[0], datasets, strict=False):
+        for config, color, marker, ls in series:
+            xs, ys = [], []
+            for publishers in counts:
+                hit = values.get((dataset, config, publishers))
+                if hit is not None:
+                    xs.append(publishers)
+                    ys.append(hit[0])
+            if xs:
+                ax.plot(xs, ys, marker=marker, linestyle=ls, color=color,
+                        label=CONFIG_LABELS[config])
+        ax.set_xscale("log", base=2)
+        ax.set_xticks(counts)
+        ax.set_xticklabels([str(c) for c in counts])
+        ax.set_xlabel("Independent publishers in the corpus")
+        ax.set_ylim(-0.04, 1.06)
+        ax.set_title(DATASET_LABELS[dataset], fontsize=8.5)
+    axes[0][0].set_ylabel("Attributable attack success rate")
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, ncol=2, loc="lower center", bbox_to_anchor=(0.5, -0.20),
+               fontsize=6.8)
+    return _save(fig, out_dir, "fig14_diversity")
+
+
+def tab_compromise(rows: list[Row], out_dir: Path) -> Path:
+    """Attributable success and abstention under a compromised authorised publisher."""
+    datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
+    casr = seed_summary([r for r in rows if r["attack"] != "clean"],
+                        ["dataset", "config", "n_per_target"],
+                        "conditional_asr", "n_baseline_correct")
+    abstain = seed_summary([r for r in rows if r["attack"] != "clean"],
+                           ["dataset", "config", "n_per_target"],
+                           "abstention_rate", "n_attacked")
+    budgets = sorted({r["n_per_target"] for r in rows})
+    configs = ["full_signed", "full_signed_independent"]
+
+    lines = [
+        r"\begin{table*}[t]",
+        r"\centering",
+        r"\small",
+        r"\caption{Attack-attributable success rate (and abstention on attacked queries) under "
+        r"adversary $\mathcal{A}_2$, which holds one authorised publisher's signing key. "
+        r"Signed ingestion admits this adversary's documents by construction, so the two rows "
+        r"differ only in whether corroboration is counted over document identifiers or over "
+        r"provenance independence classes. Pooled over three seeds."
+        r"\label{tab:compromise}}",
+        r"\begin{tabular}{ll" + "r" * len(budgets) + r"}",
+        r"\toprule",
+        r"Corpus & Corroboration unit & "
+        + " & ".join(rf"$b={n}$" for n in budgets)
+        + r" \\",
+        r"\midrule",
+    ]
+    unit = {
+        "full_signed": "Document identifier",
+        "full_signed_independent": "Independence class",
+    }
+    for dataset in datasets:
+        for i, config in enumerate(configs):
+            cells = []
+            for n in budgets:
+                hit = casr.get((dataset, config, n))
+                abst = abstain.get((dataset, config, n))
+                if hit is None:
+                    cells.append("n/a")
+                elif abst is None:
+                    cells.append(f"{hit[0]:.2f}")
+                else:
+                    cells.append(f"{hit[0]:.2f} ({abst[0]:.2f})")
+            label = DATASET_LABELS[dataset] if i == 0 else ""
+            lines.append(f"{label} & {unit[config]} & " + " & ".join(cells) + r" \\")
+        lines.append(r"\addlinespace")
+    lines += [r"\bottomrule", r"\end{tabular}", r"\end{table*}"]
+    return _write(out_dir / "tab_compromise.tex", "\n".join(lines))
+
+
 def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
     """Regenerate every table and figure the manuscript depends on."""
     _style()
     studies = {name: load_rows(results_dir, name) for name in
                ("main", "evasion", "budget", "threshold", "backfill", "backfill_strict",
-                "provenance", "generator")}
+                "provenance", "generator", "compromise", "diversity")}
     tables = output_dir / "tables"
     figures = output_dir / "figures"
     written: list[Path] = [
@@ -2163,6 +2369,36 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
         row for row in query_records if row.get("study") == "confirmation"
     ]
     local_query_intervals: list[Row] = []
+    compromise_query_records = [
+        row for row in query_records if row.get("study") == "compromise"
+    ]
+    compromise_uncertainty: list[Row] = []
+    if compromise_query_records:
+        compromise_uncertainty = query_cluster_summary(
+            compromise_query_records,
+            keys=("dataset", "config", "attack", "n_per_target"),
+        )
+        compromise_path = output_dir / "compromise_uncertainty.json"
+        compromise_path.parent.mkdir(parents=True, exist_ok=True)
+        with compromise_path.open("w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "method": (
+                        "Percentile bootstrap over distinct question clusters, as for the "
+                        "main study, computed separately per upload budget because attack "
+                        "success depends on it."
+                    ),
+                    "confidence_level": 0.95,
+                    "bootstrap_replicates": 2_000,
+                    "bootstrap_seed": QUERY_BOOTSTRAP_SEED,
+                    "results": compromise_uncertainty,
+                },
+                handle,
+                indent=2,
+            )
+            handle.write("\n")
+        written.append(compromise_path)
+
     local_uncertainty_path = output_dir / "local_model" / "query_uncertainty.json"
     if confirmation_query_records:
         local_query_intervals = query_cluster_summary(
@@ -2243,6 +2479,11 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
         attempt("fig_evasion", lambda: fig_evasion(studies["evasion"], figures))
     if studies["budget"]:
         attempt("fig_budget", lambda: fig_budget(studies["budget"], figures))
+    if studies["compromise"]:
+        attempt("fig_compromise", lambda: fig_compromise(studies["compromise"], figures))
+        attempt("tab_compromise", lambda: tab_compromise(studies["compromise"], tables))
+    if studies["diversity"]:
+        attempt("fig_diversity", lambda: fig_diversity(studies["diversity"], figures))
     if studies["threshold"]:
         attempt("fig_detection", lambda: fig_detection(studies["threshold"], figures))
         attempt("fig_threshold", lambda: fig_threshold(studies["threshold"], figures))
@@ -2261,7 +2502,9 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
     if local_table is not None:
         written.append(local_table)
     local_summary = load_local_model_summary(results_dir)
-    written.append(macros(studies, tables, query_uncertainty, local_summary))
+    written.append(
+        macros(studies, tables, query_uncertainty, local_summary, compromise_uncertainty)
+    )
     missing = verify_macros(output_dir / "body.tex", tables / "macros.tex")
     if missing:
         print(

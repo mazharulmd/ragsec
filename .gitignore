@@ -20,8 +20,10 @@ results/*
 RAGSec Paper.zip
 RAG Security Paper.zip
 
-# Compiled manuscript: regenerate with pdflatex rather than versioning the binary.
+# LaTeX build products. MainPaper.pdf is deliberately tracked as the compiled record of
+# what was submitted, so it is excepted here rather than force-added each time.
 paper-submission/*.pdf
+!paper-submission/MainPaper.pdf
 !paper-submission/figures/*.pdf
 
 # LaTeX build products

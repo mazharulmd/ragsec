@@ -1,7 +1,7 @@
 # ragsec: RAG Security and Poisoning Attack Defense
 
-Research codebase for the paper *Evaluating Layered RAG Defenses Against Adaptive Knowledge
-Poisoning: A Reproducible Security--Utility Study*. It provides:
+Research codebase for the paper *Signed but Not Safe: Provenance Independence and the Limits
+of Authenticated Ingestion in Retrieval-Augmented Generation*. It provides:
 
 - an instrumented retrieval-augmented generation (RAG) pipeline with provenance-aware data models,
 - **five knowledge-base poisoning attacks**, including a defense-aware *adaptive* adversary,
