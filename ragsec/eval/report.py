@@ -1565,6 +1565,8 @@ def tab_local_model(
         "L4": "L4 monitoring",
         "full": "Full stack",
         "full_signed": "Full + HMAC auth.",
+        "full_independent": "Full + independence disc.",
+        "full_signed_independent": "Full + HMAC + indep. disc.",
     }
     intervals_by_cell = {
         (
@@ -2136,7 +2138,9 @@ def macros(
         }
         config_names = {
             "none": "None", "L1": "LOne", "L2": "LTwo", "L3": "LThree",
-            "L4": "LFour", "full": "Full", "full_signed": "FullSigned"
+            "L4": "LFour", "full": "Full", "full_signed": "FullSigned",
+            "full_independent": "FullIndependent",
+            "full_signed_independent": "FullSignedIndependent",
         }
         for model, alias in aliases.items():
             for config, config_name in config_names.items():
