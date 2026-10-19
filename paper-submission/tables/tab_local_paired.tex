@@ -1,0 +1,20 @@
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\caption{Paired local-model differences.\label{tab:local-paired}}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.35in}p{0.95in}XXr@{}}
+\toprule
+\textbf{Model} & \textbf{Attack} & \shortstack{\textbf{Raw ASR difference}\\\textbf{(95\% paired CI)}} & \shortstack{\textbf{Attributable ASR difference}\\\textbf{(95\% paired CI)}} & \textbf{Questions/seeds}\\
+\midrule
+Llama 3.1 8B (Ollama) & Adaptive poison & -0.12 [-0.22, -0.03] & -0.12 [-0.23, -0.01] & 100/1 \\
+Llama 3.1 8B (Ollama) & PoisonedRAG & -0.18 [-0.26, -0.11] & -0.12 [-0.20, -0.05] & 100/1 \\
+Llama 3.1 8B (Ollama) & Prompt injection & -0.30 [-0.39, -0.21] & -0.28 [-0.38, -0.18] & 100/1 \\
+Qwen2.5 7B (Ollama) & Adaptive poison & -0.09 [-0.19, +0.01] & -0.04 [-0.15, +0.08] & 100/1 \\
+Qwen2.5 7B (Ollama) & PoisonedRAG & -0.16 [-0.24, -0.09] & -0.12 [-0.19, -0.05] & 100/1 \\
+Qwen2.5 7B (Ollama) & Prompt injection & -0.13 [-0.20, -0.07] & -0.12 [-0.19, -0.05] & 100/1 \\
+\bottomrule
+\end{tabularx}
+\noindent\footnotesize Full minus none, so negative values favour the full stack. Brackets give 95\% question-cluster bootstrap intervals, conditional on the included seeds. Attributable ASR uses each configuration's own clean-correct baseline.
+\end{adjustwidth}
+\end{table*}

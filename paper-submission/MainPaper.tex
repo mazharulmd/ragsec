@@ -169,31 +169,16 @@ The contribution pairs a negative result about a widely assumed defense with a m
 addresses part of what the negative result exposes. Specifically, we provide:
 
 \begin{itemize}
-    \item An extension of the adversary model to an authorised but compromised publisher, and
-          the measurement that the protection attributed to authenticated ingestion does not
-          survive it (Section~\ref{sec:compromise});
-    \item Provenance-weighted corroboration with independence discounting, which counts
-          agreement over forgery-resistant provenance classes rather than submitter-chosen
-          identifiers, together with the ingestion change that records which key verified a
-          document so that proved origin is distinguishable from asserted origin
-          (Section~\ref{sec:layer3independent});
-    \item A characterisation of where corroboration-based defense can help at all, bounded
-          below by single-document attacks that fabricate no corroboration and above by
-          retrieval displacement, with a publisher-diversity control establishing that the
-          mechanism's benefit comes from bounding one party's weight rather than from honest
-          evidence gaining corroboration (Section~\ref{sec:compromise});
-    \item A reproducible, revision-pinned implementation of four switchable controls in one RAG
-          pipeline, with its assumptions and code exposed (Section~\ref{sec:architecture});
-    \item A controlled one-factor-at-a-time diagnosis of six manually specified adaptive
-          transformations, without claiming an optimized attacker or a new attack family
-          (Section~\ref{sec:adaptive});
-    \item Reporting raw and attributable success, clean utility, abstention, detector quality,
-          and latency (Section~\ref{sec:metrics});
-    \item Question-cluster bootstrap intervals for the pinned main study, conditional on its
-          three seeds (Section~\ref{sec:metrics}); and
-    \item A seven-configuration confirmation on two locally served models, showing mixed
-          component effects and modest full-stack changes that require broader validation
-          (Section~\ref{sec:results}).
+    \item A compromised-publisher adversary, and the measurement that the protection
+          attributed to authenticated ingestion does not survive it.
+    \item Independence discounting, which counts agreement over forgery-resistant provenance
+          classes rather than submitter-chosen document identifiers, with an ingestion change
+          that records which key verified a document.
+    \item Bounds on when corroboration-based defense helps: nothing to discount against a
+          single injected document, and nothing to aggregate once poison displaces genuine
+          evidence during retrieval.
+    \item A reproducible evaluation of four switchable controls against five attacks,
+          including a defense-aware adaptive campaign, on three corpora and two served models.
 \end{itemize}
 
 The remainder of this paper is organized as follows. Section~\ref{sec:related} reviews
@@ -341,7 +326,7 @@ more effective than those systems.
 \scriptsize
 \setlength{\tabcolsep}{3pt}
 \renewcommand{\arraystretch}{0.9}
-\caption{Qualitative comparison of related approaches and RAGSec.\label{tab:related-comparison}}
+\caption{Qualitative comparison with related approaches.\label{tab:related-comparison}}
 \begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{2.7cm}LLL}
 \toprule
 \textbf{Approach} & \textbf{Security focus} & \textbf{Core mechanism} & \textbf{Relation to RAGSec}\\
@@ -538,7 +523,7 @@ possibly manipulated answer.
 \begin{adjustwidth}{-\extralength}{0cm}
 \centering
 \includegraphics[width=\linewidth]{figures/fig1_architecture.pdf}
-\caption{RAGSec workflow: poisoned uploads, four independently switchable controls, and security--utility evaluation. HMAC verification is enabled in the authenticated-ingestion configuration; monitoring observes without blocking.\label{fig:architecture}}
+\caption{RAGSec workflow and the four switchable controls.\label{fig:architecture}}
 \end{adjustwidth}
 \end{figure*}
 
@@ -655,8 +640,12 @@ manner of RobustRAG~\citep{xiang2024robustrag}, adding provenance weighting. Eac
 passage is used alone to produce a candidate answer; abstentions are discarded. Candidate
 answers are grouped by Jaccard overlap of their content tokens, and each group is scored by
 \begin{equation}
-W(g) \;=\; \Big(\textstyle\sum_{j \in g} \omega_j \cdot \max(\rho_j, \rho_{\min})^{\gamma} \cdot \phi_j\Big)
-\cdot \big(1 + \beta \left(|\mathrm{docs}(g)| - 1\right)\big),
+\begin{split}
+W(g) \;=\;
+&\Big(\textstyle\sum\limits_{j \in g} \omega_j \cdot
+\max(\rho_j, \rho_{\min})^{\gamma} \cdot \phi_j\Big) \\[2pt]
+&\quad\cdot\; \big(1 + \beta \left(|\mathrm{docs}(g)| - 1\right)\big),
+\end{split}
 \label{eq:weight}
 \end{equation}
 where $\omega_j$ is the source trust of the passage supporting answer $j$, $\rho_j$ the fraction
@@ -727,10 +716,13 @@ adversary cannot migrate a document into another publisher's class without inval
 Writing $K(g) = \{\kappa(j) : j \in g\}$ for the classes present in group $g$, the group score
 of Equation~(\ref{eq:weight}) becomes
 \begin{equation}
+\begin{split}
 W_{\mathrm{ind}}(g) \;=\;
-\Big(\textstyle\sum_{k \in K(g)}\big[\max_{j \,:\, \kappa(j) = k} w_j
-\;+\; \delta \textstyle\sum_{j \,:\, \kappa(j) = k,\, j \neq j_k^{\star}} w_j\big]\Big)
-\cdot \big(1 + \beta\left(|K(g)| - 1\right)\big),
+&\Big(\textstyle\sum\limits_{k \in K(g)}\big[\max_{j \,:\, \kappa(j) = k} w_j
+\;+\; \delta \!\!\sum\limits_{\substack{j \,:\, \kappa(j) = k \\ j \neq j_k^{\star}}}\!\! w_j
+\big]\Big) \\[2pt]
+&\quad\cdot\; \big(1 + \beta\left(|K(g)| - 1\right)\big),
+\end{split}
 \label{eq:indweight}
 \end{equation}
 where $w_j = \omega_j \cdot \max(\rho_j, \rho_{\min})^{\gamma} \cdot \phi_j$ as before,
@@ -1046,13 +1038,12 @@ makes explicit that detection is not prevention.
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig2_asr_heatmap.pdf}
-\caption{Attack success rates by defense configuration and attack across three corpora.\label{fig:heatmap}}
+\caption{Attack success by configuration and attack.\label{fig:heatmap}}
 \end{figure*}
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig3_asr_bars.pdf}
-\caption{Attack success rates by defense configuration on SQuAD; error bars show the observed
-min-to-max range across seeds.\label{fig:bars}}
+\caption{Attack success by configuration on SQuAD.\label{fig:bars}}
 \end{figure*}
 
 \subsection{Suppression Requires the Attributable Rate}
@@ -1143,7 +1134,7 @@ credential problem, not a text problem.
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig4_evasion.pdf}
-\caption{Leave-one-out ablation of six adaptive evasion techniques with and without HMAC-authenticated ingestion.\label{fig:evasion}}
+\caption{Leave-one-out ablation of the six evasion techniques.\label{fig:evasion}}
 \end{figure*}
 
 \input{tables/tab_evasion.tex}
@@ -1185,7 +1176,7 @@ imported into retrieval pipelines.
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig9_provenance.pdf}
-\caption{Effectiveness of ingestion controls against static and adaptive poisoning across three corpora.\label{fig:provenance}}
+\caption{Ingestion controls against static and adaptive poisoning.\label{fig:provenance}}
 \end{figure*}
 
 \input{tables/tab_provenance.tex}
@@ -1286,20 +1277,12 @@ not expect its benefit to scale with how many publishers it authorises.
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig13_compromise.pdf}
-\caption{Attack-attributable success against the adversary's upload budget under adversary
-$\mathcal{A}_2$, which holds one authorised publisher's signing key. Both curves are the same
-defense stack and differ only in whether corroboration is counted over document identifiers or
-over provenance independence classes. The slope of the upper curve is the escalation that
-identifier counting sells the adversary.\label{fig:compromise}}
+\caption{Attack success against upload budget under a compromised publisher.\label{fig:compromise}}
 \end{figure*}
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig14_diversity.pdf}
-\caption{Attack-attributable success against the number of independent publishers contributing
-the corpus, at a fixed budget of five poisoned documents per target under adversary
-$\mathcal{A}_2$. The gap between the two curves does not widen with publisher diversity, which
-locates the mechanism's benefit in the bound it places on any single party's weight rather than
-in corroboration accruing to honest evidence.\label{fig:diversity}}
+\caption{Attack success against the number of independent publishers.\label{fig:diversity}}
 \end{figure*}
 
 \subsection{Detection Quality and Operating Point}
@@ -1340,12 +1323,12 @@ reported threshold combines the adaptive detection level with a low clean false-
 \input{tables/tab_detection.tex}
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig6_detection_roc.pdf}
-\caption{Retrieval-filter ROC curves for static and adaptive attacks across three corpora.\label{fig:roc}}
+\caption{Retrieval-filter ROC curves.\label{fig:roc}}
 \end{figure*}
 
 \begin{figure*}[t]
 \includegraphics[width=0.62\textwidth]{figures/fig7_threshold.pdf}
-\caption{Detection, attack success, and clean-accuracy trade-offs across retrieval-filter thresholds on SQuAD.\label{fig:threshold}}
+\caption{Detection and utility across retrieval-filter thresholds.\label{fig:threshold}}
 \end{figure*}
 
 \subsection{Adversary Budget}
@@ -1378,7 +1361,7 @@ near zero under the protected-publisher assumption.
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig5_budget.pdf}
-\caption{Attack success versus poisoned documents per target across three corpora.\label{fig:budget}}
+\caption{Attack success versus poisoned documents per target.\label{fig:budget}}
 \end{figure*}
 
 \subsection{Over-Retrieval, Utility and Latency}
@@ -1416,7 +1399,7 @@ stop a badly tuned filter from denying service, but it cannot make a badly tuned
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig8_backfill.pdf}
-\caption{Effects of over-retrieval under default (left) and strict (right) filtering.\label{fig:backfill}}
+\caption{Effects of over-retrieval under default and strict filtering.\label{fig:backfill}}
 \end{figure*}
 
 Table~\ref{tab:utility} reports the utility cost of each configuration on unattacked traffic,
@@ -1442,12 +1425,12 @@ the generator is. The honest reading of Table~\ref{tab:latency} is therefore tha
 \input{tables/tab_latency.tex}
 \begin{figure*}[t]
 \includegraphics[width=0.62\textwidth]{figures/fig10_latency.pdf}
-\caption{Per-query latency by defense configuration on SQuAD, excluding external model and network costs.\label{fig:latency}}
+\caption{Per-query latency by configuration on SQuAD.\label{fig:latency}}
 \end{figure*}
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig11_frontier.pdf}
-\caption{Security--utility trade-offs under static and adaptive attacks; points are horizontally offset for readability.\label{fig:frontier}}
+\caption{Security and utility trade-offs.\label{fig:frontier}}
 \end{figure*}
 
 \subsection{How Much Depends on a Susceptible Generator}
@@ -1467,7 +1450,7 @@ the five attacks in this study and leave the knowledge-integrity problem untouch
 \input{tables/tab_generator.tex}
 \begin{figure*}[t]
 \includegraphics[width=0.62\textwidth]{figures/fig12_generator.pdf}
-\caption{Effect of generator hardening on attack-attributable success with and without defense.\label{fig:generator}}
+\caption{Effect of generator hardening on attributable success.\label{fig:generator}}
 \end{figure*}
 
 \subsection{Local-Generator Confirmation}
@@ -1685,10 +1668,10 @@ together with the threat-model assumption on which its measured protection depen
 
 \section*{Declaration of generative AI and AI-assisted technologies in the manuscript preparation process}
 
-During the preparation of this work the authors used an AI-assisted coding and writing tool to
-support implementation, experiment orchestration and drafting. After using this tool the authors
-reviewed and edited the content as needed and take full responsibility for the content of the
-published article.
+During the preparation of this work the authors used Anthropic's Claude, an AI assistant, to
+support implementation, experiment orchestration, analysis scripting and drafting. After using
+this tool the authors reviewed and edited the content as needed and take full responsibility
+for the content of the published article.
 
 \section*{Data availability}
 

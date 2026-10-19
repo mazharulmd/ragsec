@@ -530,6 +530,17 @@ def latex_table(
     a zero-width allowance so the same fragment remains inside the page measure. Tables with
     more than four columns default to the wide layout.
     """
+    # Elsevier asks for a brief caption title with the description separate. Keep the opening
+    # sentence as the caption and move the rest below the table, where it does not compete
+    # with the table for the reader's eye. The length guard avoids splitting on an
+    # abbreviation's period.
+    head, separator, tail = caption.partition(". ")
+    last_word = head.split()[-1] if head.split() else ""
+    abbreviation = len(last_word) <= 3 and (last_word[:1].isupper() or "." in last_word)
+    if separator and len(head.split()) >= 2 and not abbreviation:
+        caption = head + "."
+        note = f"{tail} {note}".strip() if note else tail
+
     spec = column_spec or ("l" + "X" * (len(header) - 1))
     env = "tabularx" if "X" in spec else "tabular"
     width = "{\\textwidth}" if env == "tabularx" else ""
@@ -541,11 +552,12 @@ def latex_table(
     if wide:
         lines += [
             "\\begin{adjustwidth}{-\\extralength}{0cm}",
+            "\\centering",
             "\\footnotesize",
             "\\setlength{\\tabcolsep}{3pt}",
         ]
     else:
-        lines.append("\\small")
+        lines += ["\\centering", "\\small"]
     lines += [
         f"\\caption{{{caption}\\label{{{label}}}}}",
         f"\\begin{{{env}}}{width}{{{spec}}}",
@@ -620,10 +632,11 @@ def fig_architecture(out_dir: Path) -> Path:
         )
 
     # --- adversary band -----------------------------------------------------
-    box(1, 49, 33, 8,
-        "Adversary\nwrites to the knowledge base; cannot modify\n"
-        "model weights or the ingestion signing key",
-        "#fbeceb", C_ATTACK, fontsize=6.6, tc=C_ATTACK)
+    # Three short lines rather than two long ones: at this width the box holds roughly forty
+    # characters per line, and the longer phrasing overflowed its border.
+    box(1, 49, 35, 8,
+        "Adversary\nwrites to the knowledge base\ncannot alter the model or the keys",
+        "#fbeceb", C_ATTACK, fontsize=6.3, tc=C_ATTACK)
     ax.text(38.5, 56.6, "Attack surface", fontsize=7.3, weight="bold", color=C_ATTACK,
             va="top")
     for i, text in enumerate(["A1  targeted poisoning", "A2  trigger backdoor",
@@ -697,8 +710,11 @@ def fig_asr_heatmap(rows: list[Row], out_dir: Path) -> Path:
                     grid[i, j] = hit[0]
         im = ax.imshow(grid, vmin=0, vmax=1, cmap="RdYlGn_r", aspect="auto")
         ax.set_xticks(range(len(ATTACK_ORDER)))
-        ax.set_xticklabels([ATTACK_LABELS[a].replace(" ", "\n") for a in ATTACK_ORDER],
-                           fontsize=6.2)
+        # Three panels share the text width, leaving under half an inch per column, so the
+        # labels are rotated rather than wrapped: stacked words collided at this size.
+        ax.set_xticklabels([ATTACK_LABELS[a] for a in ATTACK_ORDER],
+                           fontsize=6.0, rotation=30, ha="right",
+                           rotation_mode="anchor")
         ax.set_yticks(range(len(CONFIG_ORDER)))
         ax.set_yticklabels(
             [CONFIG_LABELS[c] for c in CONFIG_ORDER] if dataset == datasets[0] else [],
@@ -1208,7 +1224,7 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
     return _write(
         out_dir / "tab_main.tex",
         latex_table(
-            "Attack success rate by defense configuration, pooled over query-seed trials. "
+            "Attack success by defense configuration. Pooled over query-seed trials. "
             "Each cell reads \\emph{raw} (\\emph{attack-attributable}), the latter "
             "restricted to queries the same configuration answered correctly with no adversary "
             "present. The two diverge only for the suppression attack, whose raw rate absorbs "
@@ -1306,7 +1322,7 @@ def tab_evasion(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
     return _write(
         out_dir / "tab_evasion.tex",
         latex_table(
-            "Leave-one-out ablation of the adaptive attacker's evasion techniques on "
+            "Leave-one-out ablation of evasion techniques. Measured on "
             f"{DATASET_LABELS[dataset]} ($3$ poisoned documents per target). Each row disables "
             "one technique and leaves the other five in place, so a drop in ASR identifies a "
             "technique the defense depends on the adversary \\emph{not} using. Bracketed "
@@ -1352,7 +1368,7 @@ def tab_provenance(rows: list[Row], out_dir: Path) -> Path:
     return _write(
         out_dir / "tab_provenance.tex",
         latex_table(
-            "Attack success rate under ingestion controls of increasing strength, against a "
+            "Attack success under ingestion controls. Measured against a "
             "static (PoisonedRAG) and a provenance-spoofing adaptive adversary, $3$ documents "
             "per target. The final column counts poisoned documents rejected at ingestion for "
             "the adaptive adversary on the first dataset.",
@@ -1396,7 +1412,7 @@ def tab_detection(rows: list[Row], threshold_rows: list[Row], out_dir: Path) -> 
     return _write(
         out_dir / "tab_detection.tex",
         latex_table(
-            "Retrieval-filter detection quality, measured in the filter-only configuration so "
+            "Retrieval-filter detection quality. Measured in the filter-only configuration so "
             "that Layer 1 does not remove the candidates the filter is being scored on. AUROC "
             "and average precision (AUPRC) are threshold-free and computed over every retrieval "
             "candidate; TPR is measured at the deployed operating point. Poisoned candidates "
@@ -1460,7 +1476,7 @@ def tab_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
     return _write(
         out_dir / "tab_generator.tex",
         latex_table(
-            "Contribution of generator susceptibility, as attack-attributable success rate. "
+            "Contribution of generator susceptibility. Reported as attributable success rate. "
             "A \\emph{hardened} generator refuses "
             "instructions found in retrieved text but still answers extractively from it, so "
             "the residual risk in that column is attributable to retrieval rather than to "
@@ -1691,11 +1707,7 @@ def tab_local_model(
         r"\begin{adjustwidth}{-\extralength}{0cm}",
         r"\scriptsize",
         r"\setlength{\tabcolsep}{2pt}",
-        "\\caption{Local-model confirmation outcomes for three attack types. ASR is "
-        "unconditional; attributable ASR is restricted to queries the same configuration "
-        "answered correctly in its clean run. $n_0$ is the clean-correct denominator. "
-        f"{interval_caption}"
-        "\\label{tab:local-model}}",
+        "\\caption{Local-model confirmation.\\label{tab:local-model}}",
         r"\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.25in}"
         r">{\raggedright\arraybackslash}p{1.1in}"
         r">{\raggedright\arraybackslash}p{0.85in}Xrrr@{}}",
@@ -1709,6 +1721,10 @@ def tab_local_model(
         *body,
         r"\bottomrule",
         r"\end{tabularx}",
+        "\\noindent\\footnotesize ASR is unconditional; attributable ASR is restricted "
+        "to queries the same configuration answered correctly in its clean run. "
+        "$n_0$ is the clean-correct denominator. "
+        f"{interval_caption}",
         r"\end{adjustwidth}",
         r"\end{table*}",
     ]
@@ -1762,10 +1778,7 @@ def tab_local_paired(rows: Sequence[Row], out_dir: Path) -> Path | None:
         r"\begin{adjustwidth}{-\extralength}{0cm}",
         r"\scriptsize",
         r"\setlength{\tabcolsep}{3pt}",
-        r"\caption{Paired full-minus-none differences in local-model attack success. Negative "
-        r"values favor the full stack. Brackets give 95\% question-cluster bootstrap intervals, "
-        r"conditional on the included seeds. Attributable ASR uses each configuration's own "
-        r"clean-correct baseline.\label{tab:local-paired}}",
+        r"\caption{Paired local-model differences.\label{tab:local-paired}}",
         r"\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.35in}p{0.95in}XXr@{}}",
         r"\toprule",
         r"\textbf{Model} & \textbf{Attack} & "
@@ -1776,6 +1789,10 @@ def tab_local_paired(rows: Sequence[Row], out_dir: Path) -> Path | None:
         *body,
         r"\bottomrule",
         r"\end{tabularx}",
+        r"\noindent\footnotesize Full minus none, so negative values favour the full stack. "
+        r"Brackets give 95\% question-cluster bootstrap intervals, conditional on the "
+        r"included seeds. Attributable ASR uses each configuration's own clean-correct "
+        r"baseline.",
         r"\end{adjustwidth}",
         r"\end{table*}",
     ]
@@ -2361,12 +2378,7 @@ def tab_compromise(rows: list[Row], out_dir: Path) -> Path:
         r"\begin{table*}[t]",
         r"\centering",
         r"\small",
-        r"\caption{Attack-attributable success rate (and abstention on attacked queries) under "
-        r"adversary $\mathcal{A}_2$, which holds one authorised publisher's signing key. "
-        r"Signed ingestion admits this adversary's documents by construction, so the two rows "
-        r"differ only in whether corroboration is counted over document identifiers or over "
-        r"provenance independence classes. Pooled over three seeds."
-        r"\label{tab:compromise}}",
+        r"\caption{Attack success under a compromised publisher.\label{tab:compromise}}",
         r"\begin{tabular}{ll" + "r" * len(budgets) + r"}",
         r"\toprule",
         r"Corpus & Corroboration unit & "
@@ -2393,7 +2405,15 @@ def tab_compromise(rows: list[Row], out_dir: Path) -> Path:
             label = DATASET_LABELS[dataset] if i == 0 else ""
             lines.append(f"{label} & {unit[config]} & " + " & ".join(cells) + r" \\")
         lines.append(r"\addlinespace")
-    lines += [r"\bottomrule", r"\end{tabular}", r"\end{table*}"]
+    lines += [
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\noindent\footnotesize Attributable success with abstention on attacked queries in "
+        r"parentheses, under adversary $\mathcal{A}_2$, which holds one authorised publisher's "
+        r"signing key. Signed ingestion admits its documents by construction, so the rows "
+        r"differ only in the unit of corroboration. Pooled over three seeds.",
+        r"\end{table*}",
+    ]
     return _write(out_dir / "tab_compromise.tex", "\n".join(lines))
 
 

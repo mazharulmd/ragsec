@@ -1,8 +1,9 @@
 \begin{table*}[t]
 \begin{adjustwidth}{-\extralength}{0cm}
+\centering
 \footnotesize
 \setlength{\tabcolsep}{3pt}
-\caption{Attack success rate by defense configuration, pooled over query-seed trials. Each cell reads \emph{raw} (\emph{attack-attributable}), the latter restricted to queries the same configuration answered correctly with no adversary present. The two diverge only for the suppression attack, whose raw rate absorbs the pipeline's own error rate; this is most visible on HotpotQA, where multi-hop questions depress clean accuracy. Figure~\ref{fig:bars} shows the observed minimum-to-maximum range across seeds. The last column is clean accuracy on the unattacked corpus, i.e.\ the utility cost of the configuration.\label{tab:main}}
+\caption{Attack success by defense configuration.\label{tab:main}}
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{1.5in}>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
 \toprule
 \textbf{Configuration} & \textbf{\shortstack{Poisoned\\RAG}} & \textbf{\shortstack{Trigger\\backdoor}} & \textbf{\shortstack{Prompt\\injection}} & \textbf{\shortstack{Context\\flooding}} & \textbf{\shortstack{Adaptive\\poisoning}} & \textbf{\shortstack{Clean\\accuracy}}\\
@@ -33,5 +34,6 @@ Full defense & 0.00 \tiny(0.00) & 0.00 \tiny(0.00) & 0.00 \tiny(0.00) & 0.10 \ti
 Full + HMAC auth. & 0.00 \tiny(0.00) & 0.00 \tiny(0.00) & 0.00 \tiny(0.00) & 0.10 \tiny(0.00) & 0.00 \tiny(0.00) & 0.90\\
 \bottomrule
 \end{tabularx}
+\noindent\footnotesize Pooled over query-seed trials. Each cell reads \emph{raw} (\emph{attack-attributable}), the latter restricted to queries the same configuration answered correctly with no adversary present. The two diverge only for the suppression attack, whose raw rate absorbs the pipeline's own error rate; this is most visible on HotpotQA, where multi-hop questions depress clean accuracy. Figure~\ref{fig:bars} shows the observed minimum-to-maximum range across seeds. The last column is clean accuracy on the unattacked corpus, i.e.\ the utility cost of the configuration.
 \end{adjustwidth}
 \end{table*}

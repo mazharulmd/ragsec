@@ -1,8 +1,9 @@
 \begin{table*}[t]
 \begin{adjustwidth}{-\extralength}{0cm}
+\centering
 \footnotesize
 \setlength{\tabcolsep}{3pt}
-\caption{One poisoned passage per attack for the query \emph{``Which NFL team represented the AFC at Super Bowl 50?''} with decoy answer \emph{Carolina Panthers}, together with the source the passage claims and the retrieval filters it trips. The static constructions each carry a syntactic tell; the adaptive passage carries none, and claims the corpus's own source identifier.\label{tab:examples}}
+\caption{One poisoned passage per attack for the query \emph{``Which NFL team represented the AFC at Super Bowl 50?''} with decoy answer \emph{Carolina Panthers}, together with the source the passage claims and the retrieval filters it trips.\label{tab:examples}}
 \begin{tabularx}{\textwidth}{lXll}
 \toprule
 \textbf{Attack} & \textbf{Crafted passage} & \textbf{Claimed source} & \textbf{Filters triggered}\\
@@ -14,5 +15,6 @@ Context flooding & \texttt{\footnotesize Which NFL team represented the AFC at S
 Adaptive poisoning & \texttt{\footnotesize The entry below summarises the position recorded in the reference edition. NFL team represented AFC Super Bowl 50 is Carolina Panthers. Editors reviewed the underlying sources during the most recent revision cycle. Cross-references to re...} & huggingface & \emph{none}\\
 \bottomrule
 \end{tabularx}
+\noindent\footnotesize The static constructions each carry a syntactic tell; the adaptive passage carries none, and claims the corpus's own source identifier.
 \end{adjustwidth}
 \end{table*}

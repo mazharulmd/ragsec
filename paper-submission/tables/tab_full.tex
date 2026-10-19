@@ -1,8 +1,9 @@
 \begin{table*}[t]
 \begin{adjustwidth}{-\extralength}{0cm}
+\centering
 \footnotesize
 \setlength{\tabcolsep}{3pt}
-\caption{Detailed behaviour of the layered defense on SQuAD. \emph{Attributable ASR} restricts attack success to the queries this same configuration answered correctly with no adversary present; the distinction matters for the suppression attack, since a pipeline that was already going to fail cannot meaningfully be said to have been suppressed. \emph{Poison retrieved} is the fraction of attacked queries for which a poisoned chunk entered the candidate set; \emph{poison used} is the fraction for which one supported the answer that was returned.\label{tab:full}}
+\caption{Detailed behaviour of the layered defense on SQuAD.\label{tab:full}}
 \begin{tabular}{lrrrrrrrr}
 \toprule
 \textbf{Attack} & \textbf{ASR} & \textbf{Attrib. ASR} & \textbf{Accuracy} & \textbf{Poison retr.} & \textbf{Poison used} & \textbf{Filter TPR} & \textbf{Filter FPR} & \textbf{Abstention}\\
@@ -23,5 +24,6 @@
 \quad Clean & n/a & n/a & 0.51 & n/a & n/a & n/a & 0.01 & 0.31\\
 \bottomrule
 \end{tabular}
+\noindent\footnotesize \emph{Attributable ASR} restricts attack success to the queries this same configuration answered correctly with no adversary present; the distinction matters for the suppression attack, since a pipeline that was already going to fail cannot meaningfully be said to have been suppressed. \emph{Poison retrieved} is the fraction of attacked queries for which a poisoned chunk entered the candidate set; \emph{poison used} is the fraction for which one supported the answer that was returned.
 \end{adjustwidth}
 \end{table*}

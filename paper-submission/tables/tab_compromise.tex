@@ -1,7 +1,7 @@
 \begin{table*}[t]
 \centering
 \small
-\caption{Attack-attributable success rate (and abstention on attacked queries) under adversary $\mathcal{A}_2$, which holds one authorised publisher's signing key. Signed ingestion admits this adversary's documents by construction, so the two rows differ only in whether corroboration is counted over document identifiers or over provenance independence classes. Pooled over three seeds.\label{tab:compromise}}
+\caption{Attack success under a compromised publisher.\label{tab:compromise}}
 \begin{tabular}{llrrrrr}
 \toprule
 Corpus & Corroboration unit & $b=1$ & $b=2$ & $b=3$ & $b=5$ & $b=8$ \\
@@ -14,4 +14,5 @@ HotpotQA & Document identifier & 0.64 (0.09) & 0.84 (0.02) & 0.83 (0.06) & 0.85 
 \addlinespace
 \bottomrule
 \end{tabular}
+\noindent\footnotesize Attributable success with abstention on attacked queries in parentheses, under adversary $\mathcal{A}_2$, which holds one authorised publisher's signing key. Signed ingestion admits its documents by construction, so the rows differ only in the unit of corroboration. Pooled over three seeds.
 \end{table*}
