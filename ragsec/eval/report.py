@@ -568,7 +568,11 @@ def latex_table(
     lines += [" & ".join(cells) + "\\\\" for cells in body]
     lines += ["\\bottomrule", f"\\end{{{env}}}"]
     if note:
-        lines.append(f"\\noindent\\footnotesize {note}")
+        # A tabular is a box, so a note written after it on the next source line sets
+        # alongside it rather than below. Break the paragraph, then give the note its own
+        # full-width box so it reads as a footnote to the table.
+        lines.append("\\par\\vspace{3pt}")
+        lines.append(f"\\noindent\\parbox{{\\linewidth}}{{\\footnotesize {note}}}")
     if wide:
         lines.append("\\end{adjustwidth}")
     lines.append(f"\\end{{{float_env}}}")
@@ -1055,7 +1059,9 @@ def fig_latency(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
                label=label, edgecolor="white", linewidth=0.5)
         bottom += heights
     ax.set_xticks(range(len(configs)))
-    ax.set_xticklabels([CONFIG_LABELS[c].replace(" ", "\n", 1) for c in configs], fontsize=6.2)
+    # Seven configuration names across one column collide when stacked, so rotate them.
+    ax.set_xticklabels([CONFIG_LABELS[c] for c in configs], fontsize=6.0,
+                       rotation=30, ha="right", rotation_mode="anchor")
     ax.set_ylabel("Mean latency per query (ms)")
     ax.legend(fontsize=6.8)
     ax.set_title(f"{DATASET_LABELS[dataset]}: latency decomposition", fontsize=8.5)
@@ -1152,7 +1158,8 @@ def fig_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
         ax.bar(x + (i - 1.5) * width, heights, width, color=color, hatch=hatch,
                label=label, edgecolor="white", linewidth=0.4)
     ax.set_xticks(x)
-    ax.set_xticklabels([ATTACK_LABELS[a].replace(" ", "\n") for a in ATTACK_ORDER], fontsize=6.4)
+    ax.set_xticklabels([ATTACK_LABELS[a] for a in ATTACK_ORDER], fontsize=6.0,
+                       rotation=30, ha="right", rotation_mode="anchor")
     ax.set_ylabel("Attributable attack success rate")
     ax.set_ylim(0, 1.06)
     handles, labels = ax.get_legend_handles_labels()
@@ -1721,10 +1728,11 @@ def tab_local_model(
         *body,
         r"\bottomrule",
         r"\end{tabularx}",
-        "\\noindent\\footnotesize ASR is unconditional; attributable ASR is restricted "
-        "to queries the same configuration answered correctly in its clean run. "
-        "$n_0$ is the clean-correct denominator. "
-        f"{interval_caption}",
+        "\\par\\vspace{3pt}",
+        "\\noindent\\parbox{\\linewidth}{\\footnotesize ASR is unconditional; attributable "
+        "ASR is restricted to queries the same configuration answered correctly in its clean "
+        "run. $n_0$ is the clean-correct denominator. "
+        f"{interval_caption}}}",
         r"\end{adjustwidth}",
         r"\end{table*}",
     ]
@@ -1789,10 +1797,11 @@ def tab_local_paired(rows: Sequence[Row], out_dir: Path) -> Path | None:
         *body,
         r"\bottomrule",
         r"\end{tabularx}",
-        r"\noindent\footnotesize Full minus none, so negative values favour the full stack. "
-        r"Brackets give 95\% question-cluster bootstrap intervals, conditional on the "
-        r"included seeds. Attributable ASR uses each configuration's own clean-correct "
-        r"baseline.",
+        r"\par\vspace{3pt}",
+        r"\noindent\parbox{\linewidth}{\footnotesize Full minus none, so negative values "
+        r"favour the full stack. Brackets give 95\% question-cluster bootstrap intervals, "
+        r"conditional on the included seeds. Attributable ASR uses each configuration's own "
+        r"clean-correct baseline.}",
         r"\end{adjustwidth}",
         r"\end{table*}",
     ]
@@ -2408,10 +2417,12 @@ def tab_compromise(rows: list[Row], out_dir: Path) -> Path:
     lines += [
         r"\bottomrule",
         r"\end{tabular}",
-        r"\noindent\footnotesize Attributable success with abstention on attacked queries in "
-        r"parentheses, under adversary $\mathcal{A}_2$, which holds one authorised publisher's "
-        r"signing key. Signed ingestion admits its documents by construction, so the rows "
-        r"differ only in the unit of corroboration. Pooled over three seeds.",
+        r"\par\vspace{3pt}",
+        r"\noindent\parbox{\linewidth}{\footnotesize Attributable success with abstention on "
+        r"attacked queries in parentheses, under adversary $\mathcal{A}_2$, which holds one "
+        r"authorised publisher's signing key. Signed ingestion admits its documents by "
+        r"construction, so the rows differ only in the unit of corroboration. Pooled over "
+        r"three seeds.}",
         r"\end{table*}",
     ]
     return _write(out_dir / "tab_compromise.tex", "\n".join(lines))

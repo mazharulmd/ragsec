@@ -2,7 +2,7 @@
 \begin{adjustwidth}{-\extralength}{0cm}
 \scriptsize
 \setlength{\tabcolsep}{2pt}
-\caption{Local-model confirmation outcomes for three attack types. ASR is unconditional; attributable ASR is restricted to queries the same configuration answered correctly in its clean run. $n_0$ is the clean-correct denominator. Brackets give 95\% Wilson intervals over pooled query-seed trials, treating trials as independent; each seed uses 100 fixed SQuAD questions.\label{tab:local-model}}
+\caption{Local-model confirmation.\label{tab:local-model}}
 \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.25in}>{\raggedright\arraybackslash}p{1.1in}>{\raggedright\arraybackslash}p{0.85in}Xrrr@{}}
 \toprule
 \textbf{Model} & \textbf{Defense} & \textbf{Attack} & \shortstack{\textbf{Clean acc.}/\textbf{abst.}} & \shortstack{\textbf{ASR}\\\textbf{(95\% Wilson)}} & \shortstack{\textbf{Attributable ASR}\\\textbf{(95\% Wilson)}} & \textbf{$n_0$}\\
@@ -51,5 +51,7 @@ Llama 3.1 8B (Ollama) & Full + HMAC auth. & Prompt injection & 0.76 / 0.19 & 0.0
 Llama 3.1 8B (Ollama) & Full + HMAC auth. & Adaptive poison & 0.76 / 0.19 & 0.00 [0.00, 0.04] & 0.00 [0.00, 0.05] & 76 \\
 \bottomrule
 \end{tabularx}
+\par\vspace{3pt}
+\noindent\parbox{\linewidth}{\footnotesize Local-model confirmation outcomes for three attack types. ASR is unconditional; attributable ASR is restricted to queries the same configuration answered correctly in its clean run. $n_0$ is the clean-correct denominator. Brackets give 95\% Wilson intervals over pooled query-seed trials, treating trials as independent; each seed uses 100 fixed SQuAD questions.}
 \end{adjustwidth}
 \end{table*}

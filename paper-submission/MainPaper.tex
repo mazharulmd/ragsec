@@ -896,7 +896,8 @@ not production indexes.
 
 Passages and queries are embedded with \texttt{all-\allowbreak MiniLM-\allowbreak L6-\allowbreak v2}~\citep{reimers2019sbert,wang2020minilm},
 a 384-dimensional sentence encoder (Hub revision
-\texttt{1110a243fdf4706b3f48f1d95db1a4f5529b4d41}), and indexed with exact inner-product
+\texttt{\seqsplit{1110a243fdf4706b3f48f1d95db1a4f5529b4d41}}), and indexed with exact
+inner-product
 search~\citep{johnson2021faiss}. The main factorial uses a deterministic mock generator that
 answers extractively from the passage most lexically aligned with the question and, unless
 hardened, follows instructions in retrieved text. This makes the generator's behavior
@@ -905,8 +906,8 @@ not evidence of model-independent behavior. Section~\ref{sec:res:generator} repo
 with instruction-following disabled.
 
 We ran a local-generator confirmation on SQuAD using the Ollama model tags
-\texttt{qwen2.5:7b}~\citep{qwen257bmodelcard} and
-\texttt{llama3.1:8b}~\citep{llama318bmodelcard}, served through Ollama's OpenAI-compatible
+\texttt{qwen2.5:7b} \citep{qwen257bmodelcard} and
+\texttt{llama3.1:8b} \citep{llama318bmodelcard}, served through Ollama's OpenAI-compatible
 endpoint on a 16-OCPU, 32-GB OCI instance. Each model was evaluated on 100 validation questions,
 one seed, all seven configurations (none, L1--L4, full, and full with HMAC-authenticated
 ingestion), and three attacks (PoisonedRAG, prompt injection, and adaptive poisoning), together
