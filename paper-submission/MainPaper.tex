@@ -24,7 +24,12 @@
 \usepackage{algpseudocode}
 \usepackage{url}
 \usepackage{seqsplit}
-\usepackage[hidelinks]{hyperref}
+%% Coloured rather than boxed links: citecolor covers \citep, linkcolor covers the internal
+%% references to figures, tables, sections, equations and algorithms, urlcolor covers \href.
+\usepackage[colorlinks=true,
+            citecolor=blue,
+            linkcolor=blue,
+            urlcolor=blue]{hyperref}
 
 %% Ragged variants of tabularx's X column, used by the wider result tables.
 \newcolumntype{L}{>{\raggedright\arraybackslash}X}
