@@ -2388,58 +2388,75 @@ def fig_diversity(rows: list[Row], out_dir: Path) -> Path:
     return _save(fig, out_dir, "fig14_diversity")
 
 
-def tab_compromise(rows: list[Row], out_dir: Path) -> Path:
-    """Attributable success and abstention under a compromised authorised publisher."""
+def tab_compromise(
+    rows: list[Row], out_dir: Path, uncertainty: Sequence[Row] = ()
+) -> Path:
+    """Attributable success under a compromised publisher, by budget and aggregation rule."""
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    casr = seed_summary([r for r in rows if r["attack"] != "clean"],
-                        ["dataset", "config", "n_per_target"],
+    attacked = [r for r in rows if r["attack"] != "clean"]
+    casr = seed_summary(attacked, ["dataset", "config", "n_per_target"],
                         "conditional_asr", "n_baseline_correct")
-    abstain = seed_summary([r for r in rows if r["attack"] != "clean"],
-                           ["dataset", "config", "n_per_target"],
-                           "abstention_rate", "n_attacked")
     budgets = sorted({r["n_per_target"] for r in rows})
     configs = ["full_signed", "full_signed_independent"]
+    unit = {
+        "full_signed": "Document identifier",
+        "full_signed_independent": "Verified signer",
+    }
+
+    intervals = {
+        (str(r.get("dataset")), str(r.get("config")), r.get("n_per_target")): (
+            r.get("conditional_asr_ci_low"), r.get("conditional_asr_ci_high")
+        )
+        for r in uncertainty
+        if r.get("attack") != "clean"
+    }
+    # The clean-correct denominator each attributable rate is computed over.
+    denominators: dict[tuple, int] = {}
+    for row in attacked:
+        key = (row["dataset"], row["config"], row["n_per_target"])
+        denominators[key] = denominators.get(key, 0) + int(row.get("n_baseline_correct") or 0)
+
+    def cell(dataset: str, config: str, budget: int) -> str:
+        hit = casr.get((dataset, config, budget))
+        if hit is None:
+            return "n/a"
+        low, high = intervals.get((dataset, config, budget), (None, None))
+        if low is None or high is None:
+            return f"{hit[0]:.2f}"
+        return f"{hit[0]:.2f} [{low:.2f}, {high:.2f}]"
 
     lines = [
         r"\begin{table*}[t]",
+        r"\begin{adjustwidth}{-\extralength}{0cm}",
         r"\centering",
-        r"\small",
+        r"\footnotesize",
+        r"\setlength{\tabcolsep}{4pt}",
         r"\caption{Attack success under a compromised publisher.\label{tab:compromise}}",
-        r"\begin{tabular}{ll" + "r" * len(budgets) + r"}",
+        r"\begin{tabular}{llrrr}",
         r"\toprule",
-        r"Corpus & Corroboration unit & "
-        + " & ".join(rf"$b={n}$" for n in budgets)
-        + r" \\",
+        r"Corpus & Budget & " + " & ".join(unit[c] for c in configs) + r" & $n_0$ \\",
         r"\midrule",
     ]
-    unit = {
-        "full_signed": "Document identifier",
-        "full_signed_independent": "Independence class",
-    }
     for dataset in datasets:
-        for i, config in enumerate(configs):
-            cells = []
-            for n in budgets:
-                hit = casr.get((dataset, config, n))
-                abst = abstain.get((dataset, config, n))
-                if hit is None:
-                    cells.append("n/a")
-                elif abst is None:
-                    cells.append(f"{hit[0]:.2f}")
-                else:
-                    cells.append(f"{hit[0]:.2f} ({abst[0]:.2f})")
+        for i, budget in enumerate(budgets):
+            values = [cell(dataset, c, budget) for c in configs]
+            n0 = denominators.get((dataset, configs[0], budget), 0)
             label = DATASET_LABELS[dataset] if i == 0 else ""
-            lines.append(f"{label} & {unit[config]} & " + " & ".join(cells) + r" \\")
+            lines.append(
+                f"{label} & $b={budget}$ & " + " & ".join(values) + f" & {n0} \\\\"
+            )
         lines.append(r"\addlinespace")
     lines += [
         r"\bottomrule",
         r"\end{tabular}",
         r"\par\vspace{3pt}",
-        r"\noindent\parbox{\linewidth}{\footnotesize Attributable success with abstention on "
-        r"attacked queries in parentheses, under adversary $\mathcal{C}$, which holds one "
+        r"\noindent\parbox{\linewidth}{\footnotesize Attack-attributable success with 95\% "
+        r"question-cluster bootstrap intervals, under adversary $\mathcal{C}$, which holds one "
         r"authorised publisher's signing key. Signed ingestion admits its documents by "
-        r"construction, so the rows differ only in the unit of corroboration. Pooled over "
-        r"three seeds.}",
+        r"construction, so the columns differ only in the unit agreement is counted over. "
+        r"$n_0$ is the pooled clean-correct denominator across three seeds. Abstention on "
+        r"attacked queries rises with the cap; it is reported in the text.}",
+        r"\end{adjustwidth}",
         r"\end{table*}",
     ]
     return _write(out_dir / "tab_compromise.tex", "\n".join(lines))
@@ -2662,7 +2679,9 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
         attempt("fig_budget", lambda: fig_budget(studies["budget"], figures))
     if studies["compromise"]:
         attempt("fig_compromise", lambda: fig_compromise(studies["compromise"], figures))
-        attempt("tab_compromise", lambda: tab_compromise(studies["compromise"], tables))
+        attempt("tab_compromise",
+                lambda: tab_compromise(studies["compromise"], tables,
+                                       compromise_uncertainty))
     if studies["diversity"]:
         attempt("fig_diversity", lambda: fig_diversity(studies["diversity"], figures))
     if studies["binding"]:

@@ -118,17 +118,32 @@ def test_diversity_includes_the_single_publisher_case() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_table_reports_both_units_with_attacked_abstention(tmp_path: Path) -> None:
+def test_table_reports_both_rules_with_denominator(tmp_path: Path) -> None:
     path = tab_compromise(_study_rows(), tmp_path)
     text = path.read_text(encoding="utf-8")
 
     assert "Document identifier" in text
-    assert "Independence class" in text
-    # Abstention must come from the attacked rows (0.08 and 0.28), never the clean rows (0.27).
-    assert "0.80 (0.08)" in text
-    assert "0.60 (0.28)" in text
-    assert "(0.27)" not in text
+    assert "Verified signer" in text
+    assert "0.80" in text
+    assert "0.60" in text
+    # The clean-correct denominator must be reported, pooled over the three seeds.
+    assert "300" in text
     assert r"\label{tab:compromise}" in text
+
+
+def test_table_carries_intervals_when_they_are_supplied(tmp_path: Path) -> None:
+    uncertainty = [{
+        "dataset": "squad",
+        "config": "full_signed",
+        "attack": "adaptive_poison",
+        "n_per_target": 5,
+        "conditional_asr_ci_low": 0.74,
+        "conditional_asr_ci_high": 0.86,
+    }]
+
+    text = tab_compromise(_study_rows(), tmp_path, uncertainty).read_text(encoding="utf-8")
+
+    assert "0.80 [0.74, 0.86]" in text
 
 
 def test_macros_emit_both_units_and_the_abstention_cost(tmp_path: Path) -> None:

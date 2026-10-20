@@ -72,16 +72,16 @@ honest. A signature proves that an authorised publisher vouched for a document, 
 publisher is trustworthy, and aggregation compounds the gap by counting corroboration over
 document identifiers, so one publisher uploading $k$ paraphrases counts as $k$ witnesses. We
 extend the adversary model with an authorised but compromised publisher, and propose
-provenance-weighted corroboration with independence discounting: evidence is partitioned into
-classes derived from forgery-resistant provenance: the key that verifiably signed a document,
-its source and its author; agreement is counted over classes rather than documents;
-and within a class only the strongest item contributes weight. Under a compromised publisher,
+a per-principal contribution cap: each passage is attributed to the identity whose signature
+the service verified, agreement is counted over those principals, and within a principal only
+the strongest passage contributes weight. An attribute the uploader chooses cannot serve as a
+principal, since a key holder may vary it and still verify. Under a compromised publisher,
 authentication provides no protection, with attributable success rising from
 \casrAdaptiveSquadfullsigned{} to \compromiseSignedSquadBThree{} on SQuAD and from
 \casrAdaptiveHotpotqafullsigned{} to \compromiseSignedHotpotqaBThree{} on HotpotQA.
-Independence discounting lowers it to \compromiseSignedIndependentSquadBFive{} against
-\compromiseSignedSquadBFive{} on SQuAD, with clean accuracy unchanged and more abstention,
-though on served models the reduction is directional only. Signing a corpus therefore buys authenticity, not robustness, and a near-zero
+The cap lowers it to \compromiseSignedIndependentSquadBFive{} against
+\compromiseSignedSquadBFive{} on SQuAD, with clean accuracy unchanged, though on served models
+the reduction is directional only. Signing buys authenticity, not robustness, and a near-zero
 poisoning rate under authenticated ingestion may measure the assumption rather than the
 defense.
 \end{abstract}
@@ -171,9 +171,9 @@ addresses part of what the negative result exposes. Specifically, we provide:
 \begin{itemize}
     \item A compromised-publisher adversary, and the measurement that the protection
           attributed to authenticated ingestion does not survive it.
-    \item Independence discounting, which counts agreement over forgery-resistant provenance
-          classes rather than submitter-chosen document identifiers, with an ingestion change
-          that records which key verified a document.
+    \item A per-principal contribution cap, which counts agreement over verified publisher
+          identities rather than over submitter-chosen metadata, together with the measurement
+          showing that an uploader-chosen attribute carries no protection.
     \item Bounds on when corroboration-based defense helps: nothing to discount against a
           single injected document, and nothing to aggregate once poison displaces genuine
           evidence during retrieval.
@@ -1253,7 +1253,7 @@ adversary writes: on SQuAD from \compromiseSignedSquadBOne{} at $b=1$ to
 document identifiers, and identifiers are chosen by the submitter, this growth is purchased with
 uploads alone and not with any additional compromise.
 
-\paragraph{Independence discounting removes part of that escalation}
+\paragraph{Capping each principal removes part of that escalation}
 Replacing the unit of corroboration with the independence class of
 Equation~(\ref{eq:indweight}) lowers attributable success to
 \compromiseSignedIndependentSquadBFive{}
@@ -1286,8 +1286,8 @@ the advantage narrows again, to \compromiseSignedIndependentSquadBEight{} agains
 \compromiseSignedSquadBEight{}. The mechanism operates on aggregation, and at high budgets the
 adversary's passages displace genuine evidence during retrieval, so the honest class is often
 absent from the candidate set before aggregation is reached. A class that was never retrieved
-cannot attest anything. The practical consequence is that independence discounting is a
-complement to retrieval-stage controls and not a substitute for them.
+cannot attest anything. The practical consequence is that the cap is a complement to
+retrieval-stage controls and not a substitute for them.
 
 \paragraph{The gain comes from denying volume, not from honest diversity}
 The mechanism is motivated by independence, which invites the explanation that it works because
@@ -1537,7 +1537,7 @@ prompt-injection ASR relative to no defense on both models (0.30 to 0.36 on Llam
 The full-signed condition yields zero measured ASR for all three attacks in both 100-question
 runs, under the protected-publisher assumption that the attacker cannot obtain a valid tag.
 
-Independence discounting was confirmed against the same two models in a separate run that
+The cap was measured against the same two models in a separate run that
 evaluated the undefended pipeline, the full stack, and the full stack with independence
 discounting together, so that the three arms share one set of model builds and one code
 revision. Attributable adaptive success falls from \localCasrQwenFull{} to
@@ -1552,7 +1552,7 @@ interval is dominated by variance the comparison does not depend on. Paired over
 difference in attributable success is \pairedIndepQwenDelta{}
 (\pairedIndepQwenLow{}, \pairedIndepQwenHigh{}) on Qwen and \pairedIndepLlamaDelta{}
 (\pairedIndepLlamaLow{}, \pairedIndepLlamaHigh{}) on Llama. Across the
-\pairedIndepPooledPairs{} model-question pairs, independence discounting prevented
+\pairedIndepPooledPairs{} model-question pairs, the cap prevented
 \pairedIndepPooledPrevented{} attacks that succeeded under identifier counting and caused
 \pairedIndepPooledCaused{} that did not, an exact McNemar $p$ of \pairedIndepPooledP{}.
 
@@ -1564,9 +1564,9 @@ which it could manufacture one. But four discordant pairs out of
 headroom is also far smaller here than in the deterministic setting: the undefended adaptive
 rate is \localCasrQwenNone{} and \localCasrLlamaNone{} on these models, against
 \casrAdaptiveSquadnone{} and \casrAdaptiveHotpotqanone{} with the mock generator, which
-believes a corroborated document by construction. We therefore report independence discounting
-as measured in the deterministic setting, directionally consistent on served models, and not
-confirmed by them.
+believes a corroborated document by construction. We therefore report the cap as measured in
+the deterministic setting, directionally consistent on served models, and not confirmed by
+them.
 
 These are one-seed, fixed-sample observations. Wilson intervals are wide and overlap for the
 main content-only adaptive comparison, which is why the paired analysis above is reported
@@ -1677,7 +1677,7 @@ tested, and we neither compare HMAC with public-key signatures nor measure the e
 operational cost of key management. Main-study latencies exclude model inference
 and network overhead; local-model timings are cache-dependent and are not interpreted.
 
-Independence discounting carries its own limits. Its benefit is bounded below by attacks that
+The per-principal cap carries its own limits. Its benefit is bounded below by attacks that
 inject a single document, where no corroboration is fabricated, and above by budgets at which
 poison displaces genuine evidence during retrieval, so it complements retrieval-stage controls
 rather than replacing them. The publisher-diversity control shows that its benefit does not
