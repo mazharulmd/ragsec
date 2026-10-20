@@ -1,0 +1,20 @@
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{Binding of the grouping attribute.\label{tab:binding}}
+\begin{tabular}{llrr}
+\toprule
+Corpus & Aggregation rule & Fixed metadata & Varies author \\
+\midrule
+SQuAD & Document identifier & 0.83 (0.08) & 0.83 (0.08) \\
+ & Signer, source and author & 0.59 (0.28) & 0.83 (0.08) \\
+ & Verified signer & 0.59 (0.28) & 0.59 (0.28) \\
+\addlinespace
+\bottomrule
+\end{tabular}
+\par\vspace{3pt}
+\noindent\parbox{\linewidth}{\footnotesize Attributable success with abstention on attacked queries in parentheses, at five poisoned documents per target under adversary $\mathcal{C}$, which holds one authorised publisher's key. The author is not covered by the signing envelope, so varying it costs the adversary nothing. Pooled over three seeds.}
+\end{adjustwidth}
+\end{table*}

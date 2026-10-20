@@ -607,31 +607,7 @@ We aggregate by maximum rather than by sum or mean because the four detectors ad
 attack mechanisms: one confident detector should not be diluted by three that have nothing to
 say about the passage in question. A candidate is dropped when $\mathrm{susp}(c,q) \ge \tau$.
 Sweeping $\tau$ traces the detector's ROC curve, which we report in
-Section~\ref{sec:res:detection}; $\tau = 1$ recovers the layer's default behavior.
-
-\begin{algorithm}[H]
-\caption{Layer 2: threshold-normalized retrieval filtering}
-\label{alg:l2}
-\begin{algorithmic}[1]
-\Require query $q$; candidates $R(q)$; detectors $\{(\mathrm{stat}_i, \theta_i)\}_{i=1}^{4}$;
-threshold $\tau$; mode $\in \{\textsc{drop}, \textsc{annotate}\}$
-\Ensure surviving candidates $C$
-\State $C \gets \emptyset$
-\ForAll{$c \in R(q)$}
-  \State $\tilde{c} \gets \mathrm{NFKC}(\mathrm{strip\_invisible}(c))$ \Comment{normalize before matching}
-  \ForAll{$i \in \{1,\dots,4\}$}
-     \State $\mathrm{sev}_i \gets \mathrm{clip}(\mathrm{stat}_i(\tilde{c}, q) / \theta_i, 0, 1.5)$
-  \EndFor
-  \State $u \gets \max_i \mathrm{sev}_i$ \Comment{Equation~(\ref{eq:suspicion})}
-  \State record $u$ on $c$ \Comment{used by L3 weighting and by L4 reporting}
-  \If{$u \ge \tau$}
-     \State flag $c$; \textbf{if} mode $=\textsc{drop}$ \textbf{then continue}
-  \EndIf
-  \State $C \gets C \cup \{c\}$
-\EndFor
-\State \Return $\mathrm{top}_k(C)$ \Comment{over-retrieval by $m$ backfills the dropped slots}
-\end{algorithmic}
-\end{algorithm}
+Section~\ref{sec:res:supporting}; $\tau = 1$ recovers the layer's default behavior.
 
 \subsection{Layer 3: Provenance-Weighted Robust Aggregation}
 
@@ -658,7 +634,7 @@ returns the highest-weighted group's representative answer only if that group bo
 minimum weight and exceeds the runner-up by a margin $\mu$; otherwise it abstains.
 
 The redundancy bonus treats answer agreement across distinct document identifiers as support.
-It does not verify source independence or factual truth. Section~\ref{sec:res:evasion} examines
+It does not verify source independence or factual truth. Section~\ref{sec:res:supporting} examines
 what happens when the adversary supplies the matching documents.
 
 \begin{algorithm}[H]
@@ -787,53 +763,13 @@ displaced; it re-runs registered benchmark queries and reports ranking shifts; a
 canary queries with known expected answers. Including it as a separate layer lets us state
 explicitly what detection does and does not contribute, a point the ablation makes concrete.
 
-\begin{algorithm}[H]
-\caption{Layer 4: retrieval-drift monitoring}
-\label{alg:l4}
-\begin{algorithmic}[1]
-\Require window size $W$; drift threshold $\delta$; benchmark queries $B$; canaries $K$
-\State $w \gets \emptyset$;\quad $p \gets \bot$ \Comment{current window, previous histogram}
-\ForAll{responses $r$ in the query stream}
-  \State $w \gets w \cup \{\mathrm{chunkids}(r)\}$
-  \If{$|w| \ge W$}
-     \State $h \gets$ histogram of chunk identifiers in $w$
-     \If{$p \neq \bot$ \textbf{and} $\mathrm{JS}(p, h) > \delta$}
-        \State \textsc{alert}(\emph{retrieval drift}, $\mathrm{JS}(p,h)$, newly retrieved identifiers)
-     \EndIf
-     \State $p \gets h$;\quad $w \gets \emptyset$
-  \EndIf
-\EndFor
-\ForAll{$q \in B$} \Comment{periodic re-check against a recorded baseline}
-  \If{$\mathrm{top}_1$ changed \textbf{or} overlap with baseline $< \theta_{\mathrm{ovl}}$}
-     \State \textsc{alert}(\emph{ranking shift}, $q$)
-  \EndIf
-\EndFor
-\ForAll{$(q, a^{\mathrm{exp}}) \in K$}
-  \If{$a^{\mathrm{exp}} \not\subseteq$ answer to $q$} \State \textsc{alert}(\emph{canary failed}, $q$) \EndIf
-\EndFor
-\end{algorithmic}
-\end{algorithm}
-
 \subsection{Composition}
 
-Algorithm~\ref{alg:pipeline} shows how a defended query is served. Note the ordering
-constraint: over-retrieval must happen before filtering, or dropping a candidate simply
-shortens the context and hands the adversary a partial suppression win for free.
-Section~\ref{sec:res:backfill} quantifies this.
-
-\begin{algorithm}[H]
-\caption{Defended query path}
-\label{alg:pipeline}
-\begin{algorithmic}[1]
-\Require query $q$; index over $f_1(\mathcal{D})$; multiplier $m$; context size $k$
-\State $R \gets \mathrm{retrieve}(q,\, m\cdot k)$ \Comment{over-retrieve so filtering can backfill}
-\State $C \gets f_2(q, R)$ \Comment{Algorithm~\ref{alg:l2}}
-\State $C \gets \mathrm{top}_k(C)$
-\State $a \gets f_3(q, C)$ \Comment{Algorithm~\ref{alg:l3}; falls back to $G(q, C)$ when L3 is disabled}
-\State $f_4(q, R, C, a)$ \Comment{Algorithm~\ref{alg:l4}; observes only}
-\State \Return $a$
-\end{algorithmic}
-\end{algorithm}
+A defended query is served by retrieving an over-sized candidate set, filtering it,
+aggregating the surviving passages and recording the outcome for monitoring. The ordering
+constraint matters: over-retrieval must happen before filtering, or dropping a candidate
+simply shortens the context and hands the adversary a partial suppression win for free.
+Section~\ref{sec:res:supporting} quantifies this.
 
 \section{An Adaptive Adversary}
 \label{sec:adaptive}
@@ -867,36 +803,16 @@ deduplication retains them. The aggregator counts the IDs as support (Equation~(
 but IDs do not prove source independence.
 \end{description}
 
-Algorithm~\ref{alg:adaptive} gives the construction. We stress that A5 uses no gradient
+The released implementation gives the construction. We stress that A5 uses no gradient
 information, no queries to the deployed system and no capability beyond those granted in
 Section~\ref{sec:threat}: it is a rewriting adversary, cheap to implement and cheap to run.
 
-Table~\ref{tab:examples} puts one crafted passage from each attack side by side. The comparison
+The released artifact puts one crafted passage from each attack side by side. The comparison
 is the argument of this paper in miniature. Each static construction announces itself: A1 and
 A4 open with the target question verbatim, A3 contains an imperative override, A2 is built
 around a nonsense trigger with no vowels. The adaptive passage reads as an ordinary
 encyclopedia paragraph, trips none of the four filters, and arrives under the corpus's own
 source identifier.
-
-\input{tables/tab_examples.tex}
-\begin{algorithm}[H]
-\caption{A5: adaptive poison construction}
-\label{alg:adaptive}
-\begin{algorithmic}[1]
-\Require target query $q$; target answer $a^{*}$; budget $b$; trusted source name $s^{\dagger}$;
-neutral sentence pool $\Pi$
-\Ensure poisoned documents $P$
-\State $P \gets \emptyset$;\quad $t \gets$ content words of $q$ in order \Comment{E1: no interrogative}
-\For{$v \gets 1$ \textbf{to} $b$}
-  \State $\mathrm{claim} \gets \textsc{Template}_v(t,\, a^{*})$ \Comment{E2: declarative, no imperative verb}
-  \State $\pi_1, \dots, \pi_r \gets$ distinct sentences drawn from $\Pi$ at offset $v$ \Comment{E3, E4, E6}
-  \State $\mathrm{text} \gets \pi_1 \,\|\, \mathrm{claim} \,\|\, \pi_2 \,\|\, \cdots \,\|\, \pi_r$
-         \Comment{claim buried after a neutral lead-in}
-  \State $P \gets P \cup \{(\mathrm{text},\ \mathrm{source}{=}s^{\dagger},\ \mathrm{trust}{=}\omega^{\dagger})\}$ \Comment{E5}
-\EndFor
-\State \Return $P$
-\end{algorithmic}
-\end{algorithm}
 
 \section{Experimental Design}
 \label{sec:experiments}
@@ -933,7 +849,7 @@ search~\citep{johnson2021faiss}. The main factorial uses a deterministic mock ge
 answers extractively from the passage most lexically aligned with the question and, unless
 hardened, follows instructions in retrieved text. This makes the generator's behavior
 repeatable, but the mock's susceptibility can exaggerate real attack success; the results are
-not evidence of model-independent behavior. Section~\ref{sec:res:generator} reports the mock
+not evidence of model-independent behavior. Section~\ref{sec:res:supporting} reports the mock
 with instruction-following disabled.
 
 We ran a local-generator confirmation on SQuAD using the Ollama model tags
@@ -1061,8 +977,7 @@ the attack-specific results show substantial prompt-injection success under L3 a
 (Table~\ref{tab:main}). L3 also leaves targeted poisoning largely effective when the poisoned
 passage is among the most query-relevant candidates. It carries the largest clean-accuracy cost
 of any individual layer: accuracy falls from \cleanAccSquadnone{} to \cleanAccSquadLThree{} on
-SQuAD, with the answer-group margin and minimum-weight rules causing additional abstentions
-(Table~\ref{tab:utility}).
+SQuAD, with the answer-group margin and minimum-weight rules causing additional abstentions.
 
 By construction, monitoring alone does not change attack success at all (\casrStaticSquadLFour{}); it
 raised alerts under every attack, which is what a detective control is for, but the ablation
@@ -1081,7 +996,7 @@ makes explicit that detection is not prevention.
 \subsection{Suppression Requires the Attributable Rate}
 
 Context flooding, whose interaction with over-retrieval is examined in
-Section~\ref{sec:res:backfill}, is the case where the unconditional rate misleads. Under the full defense its
+Section~\ref{sec:res:supporting}, is the case where the unconditional rate misleads. Under the full defense its
 raw ASR on SQuAD is \asrFloodingSquadfull{}, which would suggest the availability attack
 half-succeeds. Restricted to queries the same configuration answered correctly with no
 adversary present, its attributable ASR is \casrFloodingSquadfull{}: the flooding attack does
@@ -1099,8 +1014,8 @@ the undefended pipeline and \casrAdaptiveSquadfull{} against the full four-layer
 change is small on SQuAD and varies by corpus: the full stack lowers attributable success on
 HotpotQA, while it raises it on the toy corpus. Under this fixed manual campaign, the stack does
 not provide a consistent adaptive-attack reduction across datasets.
-The filter's true-positive rate is zero at its default threshold (Table~\ref{tab:full}), while
-it detects most of the tested static constructions (Section~\ref{sec:res:detection}). This
+The filter's true-positive rate is zero at its default threshold, while
+it detects most of the tested static constructions (Section~\ref{sec:res:supporting}). This
 contrast describes the tested payloads and detector features; it does not estimate performance
 against all adaptive attacks.
 
@@ -1123,57 +1038,10 @@ publisher. Section~\ref{sec:compromise} evaluates the same configuration under
 $\mathcal{C}$, which holds one authorized publisher's key, and finds that the protection
 reported here does not survive that change. Replay is out of scope throughout.
 
-\input{tables/tab_full.tex}
-\subsection{Which Evasion Technique Matters}
-\label{sec:res:evasion}
-
-Table~\ref{tab:evasion} and Figure~\ref{fig:evasion} disable one evasion technique at a time
-and leave the other five enabled. In this one-factor-at-a-time experiment, three transformations
-are individually load-bearing and three do not change the observed result.
-
-Disabling \emph{provenance spoofing} (E5) alone reduces attack success from
-\evasionFullNone{} to \evasionFullSpoofsource{}: the poison is uploaded under an untrusted
-source name, the allowlist rejects it, and no content filter is needed. Disabling
-\emph{paraphrase} (E1) reduces it to \evasionFullParaphrase{}, because the passage then opens
-with the target question and the query-echo filter recovers. Disabling the \emph{assertive
-payload} (E2) reduces it to \evasionFullNodirectives{}, with the instruction-pattern filter's
-true-positive rate returning to unity, since an imperative override is exactly what that
-filter was built to see.
-
-The other three transformations had no individual effect: disabling natural padding, similarity
-dilution, or ID diversification leaves ASR at \evasionFullNaturalpadding{},
-\evasionFullDilutesimilarity{}, and \evasionFullDiversify{}, respectively. This ablation does
-not test combinations or establish that these techniques are unnecessary against other defenses.
-The naturalness and similarity filters did not flag either version. An ordinary declarative
-sentence is already fluent, non-repetitive, and near the corpus centroid, so further padding
-changes no detector signal. E3, E4, and E6 therefore protect against detectors this deployment
-does not have, rather than the tested ones. With HMAC-authenticated ingestion, every variant
-fails regardless of the content-level technique disabled (Table~\ref{tab:evasion}), because
-the ingestion check does not depend on document text.
-
-The middle columns of Table~\ref{tab:evasion} separate the two mechanisms by which a technique
-can be load-bearing. With paraphrasing disabled the poison is still retrieved for every
-attacked query, and the poison-retrieval rate stays at unity, but the filter now flags
-enough of it to keep it out of the answer. With provenance spoofing disabled the poison-retrieval rate
-falls to zero: nothing is filtered because nothing was ever indexed. The first is detection
-after the fact, the second is prevention, and only the second leaves nothing for the adversary
-to iterate against.
-
-The practical reading is uncomfortable for content-based defense. Two of the three necessary
-techniques are single rewriting decisions, namely writing a statement instead of a question
-and asserting instead of commanding, that cost the adversary nothing in effectiveness. The third is a
-credential problem, not a text problem.
-
-\begin{figure*}[t]
-\includegraphics[width=\textwidth]{figures/fig4_evasion.pdf}
-\caption{Leave-one-out ablation of the six evasion techniques.\label{fig:evasion}}
-\end{figure*}
-
-\input{tables/tab_evasion.tex}
 \subsection{The Ingestion-Control Ladder}
 
-Section~\ref{sec:res:evasion} identifies provenance spoofing as necessary for the attack of
-Section~\ref{sec:res:adaptive}; Table~\ref{tab:provenance} and Figure~\ref{fig:provenance} ask which ingestion controls
+Section~\ref{sec:res:supporting} identifies provenance spoofing as necessary for the attack of
+Section~\ref{sec:res:adaptive}; Figure~\ref{fig:provenance} asks which ingestion controls
 actually stop it. Against a static adversary the ladder behaves as intuition suggests: adding a
 trust threshold takes success from \provOpenStatic{} to \provTrustonlyStatic{}, and an
 allowlist to \provAllowlistStatic{}. Against the adaptive adversary the same rungs do nothing
@@ -1195,7 +1063,7 @@ between the campaign and the corpus. Attacking all $300$ SQuAD questions with th
 each requires $900$ uploads against a remaining budget of $150$; the same campaign on HotpotQA
 is $600$ uploads against a budget of nearly $1000$, and fits. A quota is a volume control, not
 an authenticity control: it prices a mass campaign and is blind to a targeted one.
-Section~\ref{sec:res:budget} shows the adaptive attack is already effective at one document per
+Section~\ref{sec:res:supporting} shows the adaptive attack is already effective at one document per
 target, so an adversary interested in a single high-value question never approaches any quota a
 growing corpus can tolerate.
 
@@ -1211,7 +1079,6 @@ imported into retrieval pipelines.
 \caption{Ingestion controls against static and adaptive poisoning.\label{fig:provenance}}
 \end{figure*}
 
-\input{tables/tab_provenance.tex}
 \subsection{When the Authorised Publisher Is the Adversary}
 \label{sec:compromise}
 
@@ -1348,174 +1215,6 @@ permitted to vary each of them.
 
 \input{tables/tab_binding.tex}
 
-\subsection{Detection Quality and Operating Point}
-\label{sec:res:detection}
-
-Table~\ref{tab:detection} reports threshold-free detector quality and Figure~\ref{fig:roc} the
-empirical ROC traced by sweeping the threshold-normalized suspicion threshold $\tau$ of
-Equation~(\ref{eq:suspicion}). Both are measured in the filter-only configuration, because in
-the full stack Layer~1 rejects the static poison before it is ever a retrieval candidate and
-the filter's score would otherwise be credited with Layer~1's work.
-
-Against the static attacks the filter is close to separable in this benchmark: AUROC is at least
-\aurocStaticMinSquad{} on SQuAD, \aurocStaticMinHotpotqa{} on HotpotQA and
-\aurocStaticMinToy{} on the toy corpus, with average precision to match. Against the adaptive
-attack AUROC is \aurocAdaptiveSquad{}, \aurocAdaptiveHotpotqa{} and \aurocAdaptiveToy{}
-respectively. The adaptive AUROCs span 0.32--0.65 and straddle chance; on these features the
-score does not reliably separate the constructed adaptive passages from the legitimate
-candidates. At the deployed operating point the corresponding true-positive rates are
-\tprAdaptiveSquad{}, \tprAdaptiveHotpotqa{} and \tprAdaptiveToy{}.
-
-This is worth stating plainly, because a detector reported only at its default threshold and
-only against published attack constructions would look excellent.
-
-Figure~\ref{fig:threshold} shows the trade-off when $\tau$ changes. Within this sweep, increasing
-adaptive detection also increases false positives on clean evidence; the experiment does not
-identify a deployment-optimal operating point. At the default operating
-point $\tau = \tauDefault{}$ the filter catches \tauDefaultTprAdaptive{} of adaptive poison at a
-false-positive rate of \tauDefaultFpr{}, leaving attack success at \tauDefaultAsrAdaptive{} with
-clean accuracy \tauDefaultCleanAcc{}. Tightening to $\tau = \tauModerate{}$ raises adaptive
-detection to \tauModerateTprAdaptive{} and cuts attack success to \tauModerateAsrAdaptive{}, but
-clean accuracy is \tauModerateCleanAcc{}, as the filter is discarding
-\tauModerateFpr{} of legitimate evidence. At $\tau = \tauAggressive{}$ attack success is
-\tauAggressiveAsrAdaptive{}, and clean accuracy is \tauAggressiveCleanAcc{}. These points show
-that the selected operating thresholds trade clean utility for detection; they do not prove
-that all possible features or operating policies face the same trade-off. In this sweep, no
-reported threshold combines the adaptive detection level with a low clean false-positive rate.
-
-\input{tables/tab_detection.tex}
-\begin{figure*}[t]
-\includegraphics[width=\textwidth]{figures/fig6_detection_roc.pdf}
-\caption{Retrieval-filter ROC curves.\label{fig:roc}}
-\end{figure*}
-
-\begin{figure*}[t]
-\includegraphics[width=0.62\textwidth]{figures/fig7_threshold.pdf}
-\caption{Detection and utility across retrieval-filter thresholds.\label{fig:threshold}}
-\end{figure*}
-
-\subsection{Adversary Budget}
-\label{sec:res:budget}
-
-Figure~\ref{fig:budget} sweeps the number of documents $b$ the adversary inserts per target.
-The undefended pipeline is saturated at a single document, consistent with the retrieval
-condition PoisonedRAG identifies: one passage constructed to embed next to the query is enough
-to enter a top-3 context. Under the full defense the static curve stays near zero across the
-whole range, so more poison does not help the tested static construction. Under
-HMAC-authenticated ingestion the adaptive curve remains near zero across budgets: every upload
-without a valid tag is rejected before indexing.
-
-For adaptive poisoning, the budget effect depends on the corpus. On SQuAD, the undefended rate
-is already \budgetAdaptiveNoneSquadBOne{} at $b=1$ and reaches only
-\budgetAdaptiveNoneSquadBTwenty{} at $b=20$. The full stack rises from
-\budgetAdaptiveFullSquadBOne{} at $b=1$ to \budgetAdaptiveFullSquadBTwo{} at $b=2$, then changes
-more gradually through \budgetAdaptiveFullSquadBTen{} at $b=10$ and
-\budgetAdaptiveFullSquadBTwenty{} at $b=20$. The increase from one to two documents is much
-larger on the toy corpus (\budgetAdaptiveFullToyBOne{} to \budgetAdaptiveFullToyBTwo{}), while
-HotpotQA continues to rise through $b=10$ (\budgetAdaptiveFullHotpotqaBOne{} at $b=1$,
-\budgetAdaptiveFullHotpotqaBTwo{} at $b=2$, and \budgetAdaptiveFullHotpotqaBTen{} at $b=10$).
-
-The abrupt toy-corpus increase is consistent with Layer~3's redundancy bonus rewarding an
-answer group supported by distinct document identifiers. This sweep changes the number of
-poisoned documents and their retrieval distribution together, however, so it does not isolate
-that bonus as the sole cause. The results show no universal budget threshold: the observed
-curve depends on the corpus, while HMAC-authenticated ingestion keeps the tested upload campaign
-near zero under the protected-publisher assumption.
-
-\begin{figure*}[t]
-\includegraphics[width=\textwidth]{figures/fig5_budget.pdf}
-\caption{Attack success versus poisoned documents per target.\label{fig:budget}}
-\end{figure*}
-
-\subsection{Over-Retrieval, Utility and Latency}
-\label{sec:res:backfill}
-
-It is often argued, and we argued it ourselves when designing
-Algorithm~\ref{alg:pipeline}, that a retrieval filter must be paired with over-retrieval, since dropping a candidate otherwise just
-shortens the context and hands a suppression adversary a win for free. Figure~\ref{fig:backfill}
-tests that argument by sweeping the candidate multiplier $m$ at two operating points, and the
-answer depends entirely on which one is deployed.
-
-At the default threshold (left panel) the argument is simply void. Going from $m=1$ to $m=20$
-leaves clean accuracy at \backfillDefaultAccLo{}, abstention at \backfillDefaultAbstainLo{} and
-attributable static ASR at \backfillDefaultAsrLo{}, identical to two decimal places, while
-p95
-latency rises from \backfillDefaultLatLo{}~ms to \backfillDefaultLatHi{}~ms. The filter's
-false-positive rate is \backfillDefaultFprLo{} at $m=1$ and \backfillDefaultFprHi{} at $m=20$,
-so it removes few clean candidates and over-retrieval adds latency without measurable security
-or utility gains. A deployment that sets a large multiplier for safety here pays an order of
-magnitude in latency for no measurable improvement.
-
-Under strict filtering (right panel, $\tau = 0.6$, false-positive rate
-\backfillStrictFprLo{} at $m=1$) the argument holds, but only for part of what it claims.
-Backfill repairs the \emph{availability} damage convincingly: abstention falls from
-\backfillStrictAbstainLo{} to \backfillStrictAbstainHi{} and attributable static ASR from
-\backfillStrictAsrLo{} to \backfillStrictAsrHi{} as $m$ grows. It does not repair
-\emph{utility}: clean accuracy recovers only from \backfillStrictAccLo{} to
-\backfillStrictAccHi{}, still far below the \backfillDefaultAccHi{} obtained at the default
-threshold, because even at $m=20$ the filter is discarding \backfillStrictFprHi{} of legitimate
-evidence and no amount of over-retrieval manufactures evidence that was thrown away.
-
-The practical conclusion is that backfill is a necessary companion to strict filtering and
-not a substitute for choosing the threshold correctly. The multiplier is the wrong lever: it can
-stop a badly tuned filter from denying service, but it cannot make a badly tuned filter useful.
-
-\begin{figure*}[t]
-\includegraphics[width=\textwidth]{figures/fig8_backfill.pdf}
-\caption{Effects of over-retrieval under default and strict filtering.\label{fig:backfill}}
-\end{figure*}
-
-Table~\ref{tab:utility} reports the utility cost of each configuration on unattacked traffic,
-Table~\ref{tab:latency} and Figure~\ref{fig:latency} the latency decomposition, and
-Figure~\ref{fig:frontier} the resulting security--utility trade-off. The largest utility cost is Layer~3, which
-takes clean accuracy from \cleanAccSquadnone{} to \cleanAccSquadLThree{} on SQuAD and raises the
-abstention rate from near zero to roughly a third of queries: on questions where the isolated
-answers disagree it declines to answer rather than picking one.
-
-The measured time is dominated by filtering, at roughly \filterMsFullSquad{}~ms of a
-\meanMsFullSquad{}~ms defended query, because the layer scores $mk = 30$ candidates with four
-detectors, one of which maintains corpus-level statistics. This ranking is an artifact of the
-harness and should not be carried into a deployment: the generator here is a local mock costing
-a fraction of a millisecond per call, so the one component that would dominate a real system is
-precisely the one this measurement makes invisible. The structural cost of Layer~3 is not a
-matter of measurement at all: by construction it issues one generator call per retained
-passage instead of one per query, so at $k=3$ it triples generator spend regardless of how fast
-the generator is. The honest reading of Table~\ref{tab:latency} is therefore that the defense's
-\emph{own} overhead is dominated by candidate filtering and scales with $m$, while its dominant
-\emph{deployment} cost is the $k$-fold multiplication of generator calls.
-
-\input{tables/tab_utility.tex}
-\input{tables/tab_latency.tex}
-\begin{figure*}[t]
-\includegraphics[width=0.62\textwidth]{figures/fig10_latency.pdf}
-\caption{Per-query latency by configuration on SQuAD.\label{fig:latency}}
-\end{figure*}
-
-\begin{figure*}[t]
-\includegraphics[width=\textwidth]{figures/fig11_frontier.pdf}
-\caption{Security and utility trade-offs.\label{fig:frontier}}
-\end{figure*}
-
-\subsection{How Much Depends on a Susceptible Generator}
-\label{sec:res:generator}
-
-The generator used throughout obeys instructions found in retrieved text, which is a worst-case
-assumption. Table~\ref{tab:generator} and Figure~\ref{fig:generator} repeat the experiments
-with that behavior disabled. Prompt injection is, as expected, eliminated: with no
-instruction-following there is no instruction hierarchy to override. The other four attacks are
-essentially unaffected, including the adaptive attack, because none of them relies on the
-generator obeying an order. They rely on the generator believing a document, which any
-faithful, grounded generator will do by design. Indeed, a generator that ignored its
-retrieved context would defeat the purpose of retrieval. Instruction-hierarchy training and structured
-prompting~\citep{wallace2024hierarchy,chen2024struq,chen2025secalign} therefore address one of
-the five attacks in this study and leave the knowledge-integrity problem untouched.
-
-\input{tables/tab_generator.tex}
-\begin{figure*}[t]
-\includegraphics[width=0.62\textwidth]{figures/fig12_generator.pdf}
-\caption{Effect of generator hardening on attributable success.\label{fig:generator}}
-\end{figure*}
-
 \subsection{Local-Generator Confirmation}
 \label{sec:res:local}
 
@@ -1574,7 +1273,36 @@ alongside them. The results do not establish population-level model behavior, an
 decoding makes latency incomparable. No hosted commercial model was evaluated.
 
 \input{tables/tab_local_model.tex}
-\IfFileExists{tables/tab_local_paired.tex}{\input{tables/tab_local_paired.tex}}{}
+
+\subsection{Supporting Ablations}
+\label{sec:res:supporting}
+
+Four further studies constrain how the layers behave, and we summarise them here rather than
+devoting a figure to each. Full tables, figures and per-query outcomes for all of them are in
+the released artifact.
+
+\emph{Which evasion technique matters.} Removing one technique at a time from the adaptive
+campaign shows that its strength comes from the payload rewriting rather than from provenance
+spoofing: dropping the assertive, directive-free payload is what restores the retrieval
+filter, while dropping source spoofing changes little once ingestion is unauthenticated.
+
+\emph{Detection quality.} The retrieval filter separates the static payloads almost perfectly,
+with area under the ROC curve at or above \detectionAurocPoisonedragSquad{} on SQuAD, and fails
+on the adaptive campaign, at \detectionAurocAdaptiveSquad{}. Sweeping its threshold trades
+detection against clean utility monotonically; the deployed operating point holds the
+false-positive rate on unattacked traffic to \detectionFprSquad{}.
+
+\emph{Adversary budget and over-retrieval.} Attack success grows with the number of poisoned
+documents per target under identifier counting, which is the escalation
+Section~\ref{sec:compromise} examines directly. Over-retrieving candidates so that filtered
+passages can be backfilled does not change attack success at the default threshold, because
+the filter removes little there; it matters only under strict filtering.
+
+\emph{Generator susceptibility.} Disabling instruction following in the deterministic generator
+removes the prompt-injection result entirely but leaves adaptive poisoning close to its
+original rate, which is the behaviour the served-model confirmation of
+Section~\ref{sec:res:local} probes. Latency is dominated by the retrieval filter rather than by
+aggregation, and all timings exclude model inference.
 
 \section{Discussion}
 \label{sec:discussion}

@@ -2472,8 +2472,15 @@ RULE_ORDER = ("identifier", "unbound", "bound")
 
 def tab_binding(rows: list[Row], out_dir: Path) -> Path:
     """Attack success per aggregation rule, with and without a metadata-varying adversary."""
-    datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
     attacked = [r for r in rows if r["attack"] != "clean"]
+    # Report only corpora that completed every rule against both adversaries; a partial run
+    # would otherwise print a row of "n/a" that reads like a measured result.
+    complete = {
+        d for d in DATASET_LABELS
+        if {(r["rule"], r["diversify_metadata"]) for r in attacked if r["dataset"] == d}
+        == {(rule, flag) for rule in RULE_ORDER for flag in (False, True)}
+    }
+    datasets = [d for d in DATASET_LABELS if d in complete]
     casr = seed_summary(attacked, ["dataset", "rule", "diversify_metadata"],
                         "conditional_asr", "n_baseline_correct")
     abstain = seed_summary(attacked, ["dataset", "rule", "diversify_metadata"],
