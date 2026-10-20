@@ -613,14 +613,17 @@ def fig_architecture(out_dir: Path) -> Path:
     ax.grid(False)
 
     LAYER_FACE, PLAIN_FACE = "#e6f0f8", "#f3f3f3"
+    BOX_EDGE = "black"
 
-    def box(x, y, w, h, title, face, edge, caption="", weight="normal", tc="black",
-            fontsize=7.0):
+    def box(x, y, w, h, title, face, edge=BOX_EDGE, caption="", weight="normal",
+            tc="black", fontsize=7.0):
+        # One border colour for every box, so the fill alone carries the grouping and the
+        # diagram still reads when printed in grey.
         ax.add_patch(
             FancyBboxPatch(
                 (x, y), w, h,
                 boxstyle="round,pad=0.45,rounding_size=1.0",
-                facecolor=face, edgecolor=edge, linewidth=1.0,
+                facecolor=face, edgecolor=BOX_EDGE, linewidth=0.9,
             )
         )
         ax.text(x + w / 2, y + h / 2, title, ha="center", va="center",
@@ -680,19 +683,20 @@ def fig_architecture(out_dir: Path) -> Path:
     arrow(71.5, 34, 71.5, 25.5, C_DEFENSE)
     arrow(71.5, 25.5, 28.5, 25.5, C_DEFENSE)
     arrow(28.5, 25.5, 28.5, 20, C_DEFENSE)
-    ax.text(71, 26.5, "top-$mk$ candidate set (over-retrieval enables backfill)",
+    ax.text(68.5, 26.6, "top-$mk$ candidate set (over-retrieval enables backfill)",
             ha="right", fontsize=6.3, color=C_DEFENSE, style="italic")
 
     # --- monitoring ---------------------------------------------------------
     box(60, 0.5, 39, 5.5, "L4  Anomaly monitoring", "#e8f5ef", C_SIGNED,
         weight="bold", fontsize=6.8)
-    ax.text(79.5, 3.25 - 2.0, "", ha="center")
     ax.text(79.5, -1.4, "retrieval drift $\\cdot$ ranking shift $\\cdot$ canary queries",
             ha="center", va="top", fontsize=5.8, color=C_NEUTRAL, style="italic")
     arrow(91, 12, 91, 6, C_SIGNED)
     arrow(60, 3.25, 30, 3.25, C_SIGNED, ls=(0, (4, 2)))
-    ax.text(45, 4.5, "alerts to operators (detective, not preventive)",
-            ha="center", fontsize=6.2, color=C_SIGNED, style="italic")
+    # Anchored at the arrow's own tail and set leftwards, so the label cannot reach the box
+    # however long it gets.
+    ax.text(58, 4.6, "alerts to operators (detective, not preventive)",
+            ha="right", fontsize=6.2, color=C_SIGNED, style="italic")
 
     return _save(fig, out_dir, "fig1_architecture")
 
