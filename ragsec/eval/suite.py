@@ -606,6 +606,73 @@ def study_compromise(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                     )
 
 
+def study_binding(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
+    """Is the principal made of attributes the adversary cannot choose?
+
+    A rule that groups evidence by provenance is only as good as the binding of the attributes
+    it groups on. Three rules are compared under a compromised publisher: counting document
+    identifiers, a principal that includes the uploader-chosen source and author, and a
+    principal made only of the signer identity the server assigns from the verified key.
+
+    Each is run against an adversary that keeps its metadata fixed and against one that varies
+    the author on every document. The signing envelope covers identity, source and text but
+    not the author, so a key holder can vary it and still verify. Varying the source instead
+    is self-defeating, because the ingestion allowlist rejects an unknown label before
+    aggregation sees it.
+    """
+    for dataset in datasets:
+        for rule in ("identifier", "unbound", "bound"):
+            for diversify in (False, True):
+                for seed in seeds:
+                    config = base_config(
+                        dataset,
+                        "full_signed",
+                        seed,
+                        attacks=[{
+                            "name": "adaptive_poison",
+                            "n_per_target": DIVERSITY_BUDGET,
+                            "params": {"diversify_metadata": diversify},
+                        }],
+                        publishers=DEFAULT_PUBLISHERS,
+                        compromised_publisher=True,
+                    )
+                    config.defenses = _binding_stack(dataset, rule)
+                    yield Cell(
+                        study="binding",
+                        key={
+                            "dataset": dataset,
+                            "rule": rule,
+                            "diversify_metadata": diversify,
+                            "seed": seed,
+                        },
+                        config=config,
+                    )
+
+
+def _binding_stack(dataset: str, rule: str) -> list[dict[str, Any]]:
+    """The signed stack with its aggregation rule set to one of the three variants."""
+    layers = [dict(layer) for layer in defense_stack("full_signed", dataset)]
+    for layer in layers:
+        if layer["name"] != "robust_aggregation":
+            continue
+        params = dict(layer.get("params") or {})
+        if rule == "identifier":
+            params["independence_discounting"] = False
+        elif rule == "unbound":
+            params.update(
+                independence_discounting=True,
+                independence_fields=("signer", "source_id", "author"),
+                allow_unbound_fields=True,
+            )
+        elif rule == "bound":
+            params.update(independence_discounting=True,
+                          independence_fields=("signer",))
+        else:
+            raise ValueError(f"Unknown binding rule {rule!r}")
+        layer["params"] = params
+    return layers
+
+
 def study_diversity(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
     """Does independence discounting depend on honest publishers being diverse?
 
@@ -854,6 +921,7 @@ STUDIES = {
     "budget": study_budget,
     "compromise": study_compromise,
     "diversity": study_diversity,
+    "binding": study_binding,
     "threshold": study_threshold,
     "backfill": study_backfill,
     "backfill_strict": study_backfill_strict,

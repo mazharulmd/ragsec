@@ -97,6 +97,15 @@ class Attack(ABC):
         """Extra evaluation-only metadata attached to the poisoned document."""
         return {}
 
+    def author_for(self, variant: int) -> str | None:
+        """Author recorded on the ``variant``-th poisoned document.
+
+        Constant by default. An adversary that varies it is probing whether the defense
+        counts parties or merely counts metadata, so the hook exists to let an attack do
+        that deliberately rather than by accident.
+        """
+        return self.author
+
     def generate_poison(
         self, targets: Sequence[AttackTarget], n_per_target: int = 1
     ) -> list[Document]:
@@ -112,7 +121,7 @@ class Attack(ABC):
                         provenance=Provenance(
                             source_id=source_id,
                             trust_score=trust_score,
-                            author=self.author,
+                            author=self.author_for(variant),
                         ),
                         metadata={
                             "poison": True,

@@ -279,7 +279,7 @@ that the publisher is honest, and it carries no information about how many indep
 attest a claim. The supply-chain literature treats compromise of one authorised signer as the
 expected failure mode rather than a worst case, and transparency logs exist precisely because
 possession of a valid key is not evidence of good behaviour. We therefore evaluate signed
-ingestion under adversary $\mathcal{A}_2$ as well as $\mathcal{A}_1$, and find that its
+ingestion under adversary $\mathcal{C}$ as well as $\mathcal{U}$, and find that its
 measured protection is contingent on the honest-publisher assumption rather than on
 authentication itself (Section~\ref{sec:compromise}). Our HMAC experiment remains one
 implementation and not a new cryptographic result.
@@ -436,37 +436,37 @@ We distinguish two adversaries that differ in exactly one capability, whether th
 signing authority. Separating them matters because the entire measured benefit of
 authenticated ingestion turns on which one is assumed.
 
-\paragraph{Adversary $\mathcal{A}_1$: unauthorised writer.}
-$\mathcal{A}_1$ can \textbf{write to the knowledge base} through an untrusted connector or a
+\paragraph{Adversary $\mathcal{U}$: unauthorised writer.}
+$\mathcal{U}$ can \textbf{write to the knowledge base} through an untrusted connector or a
 compromised upload account that has \emph{no} signing authority, and knows the target question.
 The publishers that sign legitimate documents are separate principals from the upload path.
-$\mathcal{A}_1$ cannot read or forge any publisher's signing key. This is the adversary assumed
+$\mathcal{U}$ cannot read or forge any publisher's signing key. This is the adversary assumed
 by provenance-based defenses, and the one under which signed ingestion is reported as effective.
 
-\paragraph{Adversary $\mathcal{A}_2$: compromised authorised publisher.}
-$\mathcal{A}_2$ holds the signing key of one publisher among the $P$ that the deployment
+\paragraph{Adversary $\mathcal{C}$: compromised authorised publisher.}
+$\mathcal{C}$ holds the signing key of one publisher among the $P$ that the deployment
 authorises. Its documents therefore carry signatures that \emph{verify}, and ingestion control
 admits them by construction: no allowlist, trust score, or signature check can exclude a
-correctly signed document from an authorised source. $\mathcal{A}_2$ models key theft, a
+correctly signed document from an authorised source. $\mathcal{C}$ models key theft, a
 malicious insider at a contributing publisher, and a publisher whose own upstream supply chain
 has been subverted. It does \emph{not} hold any other publisher's key, and because the
 signature covers document identity, source, and content jointly (Section~\ref{sec:layer1}), it
 cannot alter documents published by others without invalidating their tags.
 
-$\mathcal{A}_2$ is not an exotic escalation. Deployments that authenticate ingestion
+$\mathcal{C}$ is not an exotic escalation. Deployments that authenticate ingestion
 authorise many publishers, and compromise of one of them is the expected failure mode of any
 multi-party signing arrangement rather than a worst case. Prior provenance-based defenses
-exclude $\mathcal{A}_2$ by assumption, which is precisely why its omission is consequential:
+exclude $\mathcal{C}$ by assumption, which is precisely why its omission is consequential:
 the protection those defenses report is contingent on an assumption that grows weaker as the
 number of authorised publishers grows.
 
-\paragraph{Common to both.}
+\paragraph{Common to both}
 We grant both adversaries knowledge of the defense: its architecture, filters, and thresholds.
 We do \emph{not} grant either the ability to modify the generator's weights or the retriever,
 or to observe other users' queries. The adversary's budget is the number of documents $b$ it
 may insert per target question; we sweep $b$ explicitly. Unless stated otherwise, results
-reported for signed configurations are under $\mathcal{A}_1$, and
-Section~\ref{sec:compromise} reports the same configurations under $\mathcal{A}_2$.
+reported for signed configurations are under $\mathcal{U}$, and
+Section~\ref{sec:compromise} reports the same configurations under $\mathcal{C}$.
 
 For these benchmark experiments, we operationalise target knowledge by giving the adversary
 the full QA question list and targeting every listed question. This is a batch-poisoning
@@ -684,35 +684,66 @@ what happens when the adversary supplies the matching documents.
 \end{algorithmic}
 \end{algorithm}
 
-\subsection{Independence Discounting: Counting Corroboration Correctly}
+\subsection{A Per-Principal Contribution Cap}
 \label{sec:layer3independent}
 
 Equation~(\ref{eq:weight}) rewards a group whose passages carry distinct document identifiers.
 An identifier is chosen by whoever submits the document, so this rewards the one quantity an
 adversary controls for free. Writing the same claim into $k$ documents multiplies the
 redundancy bonus by up to $1 + \beta(k-1)$ and adds $k$ weighted terms to the sum, while
-costing the adversary nothing but $k$ uploads. We therefore replace the unit of corroboration.
-Agreement should be counted over the number of \emph{independent parties} that attest a claim,
-not the number of files that assert it.
+costing the adversary nothing but $k$ uploads. We therefore replace the unit over which
+agreement is counted, and cap how much weight any one party can contribute.
 
-\paragraph{Independence classes.}
-For a passage $j$ let $\mathrm{doc}(j)$ be its document and define
+We are deliberate about what this does and does not establish. The rule bounds the weight a
+single \emph{principal} accumulates inside one answer group. It does not verify that two
+principals reasoned independently, that they consulted different evidence, or that either is
+telling the truth. Calling the quantity independence would claim the first of those; we claim
+only the bound, and Section~\ref{sec:compromise} reports a control that is consistent with
+the narrower reading.
+
+\paragraph{The principal, and what binds it}
+A principal is useful only if the adversary cannot mint new ones. That rules out every
+attribute the uploader chooses, so we define, for a passage $j$,
 \begin{equation}
-\kappa(j) \;=\; \big(\mathrm{signer}(j),\; \mathrm{source}(j),\; \mathrm{author}(j)\big),
+\pi(j) \;=\; \mathrm{signer}(j),
 \label{eq:indkey}
 \end{equation}
-where $\mathrm{signer}(j)$ is the identity of the key whose signature over $\mathrm{doc}(j)$
-Layer~1 \emph{verified}. Three points make $\kappa$ resistant to forgery. First,
-$\mathrm{signer}(j)$ is recorded by Layer~1 after a successful check and is never read from
-caller-supplied metadata, so a submitter cannot assert that its document was verified. Second,
-if a document carries a signature that no configured key validates, $\mathrm{signer}(j)$ takes
-the single value $\bot_{\mathrm{unver}}$; if it carries none, it takes the single value
-$\bot_{\mathrm{uns}}$. All unsigned documents therefore occupy \emph{one} class, so an
-unauthenticated adversary gains no corroboration from volume at all, whatever identifiers it
-chooses. Third, because the signature covers identity, source, and content jointly, an
-adversary cannot migrate a document into another publisher's class without invalidating it.
+the identity of the key whose signature over $\mathrm{doc}(j)$ Layer~1 \emph{verified}. Three
+properties matter. First, $\mathrm{signer}(j)$ is written by Layer~1 after a successful check
+and is never read from caller-supplied metadata, so a submitter cannot assert that its document
+was verified. Second, a document carrying a signature that no configured key validates takes
+the single value $\bot_{\mathrm{unver}}$, and one carrying none takes the single value
+$\bot_{\mathrm{uns}}$; all unsigned documents therefore form \emph{one} principal, so an
+unauthenticated adversary gains nothing from volume whatever identifiers it chooses. Third,
+because the key registry maps each key to exactly one publisher identity, a key holder is
+confined to its own principal no matter what else it writes.
 
-\paragraph{Two-stage aggregation.}
+The attributes we exclude are as important as the one we keep, because an earlier form of this
+rule included them. The signing envelope of Section~\ref{sec:layer1} covers the document
+identifier, the source, and the text; it does \emph{not} cover the author. A key holder may
+therefore vary the author freely and still verify, which would let one compromised publisher
+mint a fresh principal per document. The source is covered by the envelope, so no third party
+can rewrite it, but the holder of a valid key chooses it before signing and so is not
+constrained by it either. Section~\ref{sec:res:binding} measures both effects directly: against
+an adversary that varies the author, a principal including these attributes collapses to
+identifier counting, while the signer-only principal of Equation~(\ref{eq:indkey}) is
+unaffected. The implementation refuses an uploader-chosen attribute in the principal unless an
+ablation requests it explicitly.
+
+\paragraph{Key model}
+Our implementation authenticates with HMAC, which is symmetric: any party holding the
+verification secret can also produce tags. The experiments therefore model a registry in which
+the service holds one key per authorised publisher and derives $\mathrm{signer}(j)$ from
+\emph{which} key verified a document, rather than from anything the document claims. Legitimate
+corpus documents are dealt round robin across $P$ publisher keys, and adversary $\mathcal{C}$
+is given exactly one of them. This separates publisher identities well enough to study the
+aggregation question, but it assumes the verifying service is itself trusted, since that
+service could forge any publisher's tag. A deployment that cannot make that assumption needs
+public-key signatures, where the verifier holds only public keys and the signer identity is a
+certified public key rather than a shared secret. The aggregation rule is unchanged by that
+substitution: it needs an authenticated publisher identity, not a particular primitive.
+
+\paragraph{Two-stage aggregation}
 Writing $K(g) = \{\kappa(j) : j \in g\}$ for the classes present in group $g$, the group score
 of Equation~(\ref{eq:weight}) becomes
 \begin{equation}
@@ -734,11 +765,11 @@ $\kappa(j) = \mathrm{doc}(j)$ recovers Equation~(\ref{eq:weight}) exactly, so id
 counting is the special case of this rule in which every document is assumed to be its own
 independent party. That configuration is the control arm in all experiments that follow.
 
-\paragraph{What this does and does not provide.}
+\paragraph{What this does and does not provide}
 The mechanism removes a volume multiplier; it does not adjudicate truth. It bounds the
 weight any single party can accumulate within one answer group by that party's strongest
 passage, which holds whether the party is unsigned, carries an unverifiable signature, or holds
-a valid key, and therefore applies to adversary $\mathcal{A}_2$ as well as $\mathcal{A}_1$. It
+a valid key, and therefore applies to adversary $\mathcal{C}$ as well as $\mathcal{U}$. It
 provides no benefit when the adversary submits a single document, since there is then no
 fabricated corroboration to discount, and it cannot help when poison displaces genuine evidence
 before aggregation is reached, because a class that was never retrieved cannot attest anything.
@@ -1086,10 +1117,10 @@ HMAC-authenticated ingestion blocks the tested upload campaign. With Layer~1 req
 tag over the versioned envelope containing the document identifier, source identifier, and text,
 the adaptive attack's attributable success falls to \casrAdaptiveSquadfullsigned{} on SQuAD and
 \casrAdaptiveHotpotqafullsigned{} on HotpotQA. Clean accuracy is unchanged relative to the
-unsigned full stack in this experiment. This result holds for adversary $\mathcal{A}_1$ only:
+unsigned full stack in this experiment. This result holds for adversary $\mathcal{U}$ only:
 it assumes the attacker cannot access a signing key or request tags from an authorized
 publisher. Section~\ref{sec:compromise} evaluates the same configuration under
-$\mathcal{A}_2$, which holds one authorized publisher's key, and finds that the protection
+$\mathcal{C}$, which holds one authorized publisher's key, and finds that the protection
 reported here does not survive that change. Replay is out of scope throughout.
 
 \input{tables/tab_full.tex}
@@ -1184,8 +1215,8 @@ imported into retrieval pipelines.
 \subsection{When the Authorised Publisher Is the Adversary}
 \label{sec:compromise}
 
-Every signed-ingestion result reported so far assumes adversary $\mathcal{A}_1$, which holds no
-signing key. This subsection reports the same configurations under $\mathcal{A}_2$, which holds
+Every signed-ingestion result reported so far assumes adversary $\mathcal{U}$, which holds no
+signing key. This subsection reports the same configurations under $\mathcal{C}$, which holds
 the key of one authorised publisher among eight. Its documents carry signatures that verify, so
 Layer~1 admits them by construction: the allowlist, the trust score, and the signature check
 all pass. Table~\ref{tab:compromise} and Figure~\ref{fig:compromise} give the results, with the
@@ -1200,7 +1231,7 @@ magnitudes here should be read as an upper bound on what a credulous generator p
 does not depend on the generator is the admission result: a correctly signed document from an
 authorised source passes ingestion whatever the generator later does with it.
 
-\paragraph{Authentication contributes nothing once a key is held.}
+\paragraph{Authentication contributes nothing once a key is held}
 At the budget used throughout the main results ($b=3$), attack-attributable success under the
 signed configuration rises from \casrAdaptiveSquadfullsigned{} to
 \compromiseSignedSquadBThree{}
@@ -1214,15 +1245,15 @@ property of the assumption that no authorised publisher is adversarial, and it d
 entirely when that assumption does. This is the paper's central negative result, and it applies
 to our own best-performing configuration.
 
-\paragraph{Identifier counting sells the adversary an escalation.}
-Under $\mathcal{A}_2$, attributable success grows monotonically with the number of documents the
+\paragraph{Identifier counting sells the adversary an escalation}
+Under $\mathcal{C}$, attributable success grows monotonically with the number of documents the
 adversary writes: on SQuAD from \compromiseSignedSquadBOne{} at $b=1$ to
 \compromiseSignedSquadBEight{} at $b=8$, and on HotpotQA from \compromiseSignedHotpotqaBOne{} to
 \compromiseSignedHotpotqaBEight{}. Because Equation~(\ref{eq:weight}) counts corroboration over
 document identifiers, and identifiers are chosen by the submitter, this growth is purchased with
 uploads alone and not with any additional compromise.
 
-\paragraph{Independence discounting removes part of that escalation.}
+\paragraph{Independence discounting removes part of that escalation}
 Replacing the unit of corroboration with the independence class of
 Equation~(\ref{eq:indweight}) lowers attributable success to
 \compromiseSignedIndependentSquadBFive{}
@@ -1247,7 +1278,7 @@ attacked queries, which rises from \compromiseAbstainSignedSquadBFive{} to
 often declines to answer rather than answering wrongly, which is the intended failure direction
 but is not free.
 
-\paragraph{The benefit is bounded at both ends.}
+\paragraph{The benefit is bounded at both ends}
 At $b=1$ the two corroboration units coincide
 (\compromiseSignedSquadBOne{} against \compromiseSignedIndependentSquadBOne{} on SQuAD), as they
 must: a single document fabricates no corroboration, so there is nothing to discount. At $b=8$
@@ -1258,7 +1289,7 @@ absent from the candidate set before aggregation is reached. A class that was ne
 cannot attest anything. The practical consequence is that independence discounting is a
 complement to retrieval-stage controls and not a substitute for them.
 
-\paragraph{The gain comes from denying volume, not from honest diversity.}
+\paragraph{The gain comes from denying volume, not from honest diversity}
 The mechanism is motivated by independence, which invites the explanation that it works because
 honest evidence is attested by several publishers while the adversary is one. The diversity
 control in Figure~\ref{fig:diversity} does not support that explanation. Holding the budget
@@ -1285,6 +1316,37 @@ not expect its benefit to scale with how many publishers it authorises.
 \includegraphics[width=\textwidth]{figures/fig14_diversity.pdf}
 \caption{Attack success against the number of independent publishers.\label{fig:diversity}}
 \end{figure*}
+
+\subsection{Is the Principal Bound?}
+\label{sec:res:binding}
+
+A rule that groups evidence by provenance is only as strong as the binding of the attribute it
+groups on, so we attack the binding directly. Adversary $\mathcal{C}$ holds one authorised
+publisher's key and varies the author label on every document it writes. This costs it nothing:
+the signing envelope covers the document identifier, the source and the text, so a changed
+author still verifies. Varying the source instead is self-defeating, because the ingestion
+allowlist rejects an unfamiliar label before aggregation ever sees the document, which is
+itself a small result about where each control binds.
+
+Three aggregation rules are compared at five poisoned documents per target: counting document
+identifiers, a principal of $(\mathrm{signer}, \mathrm{source}, \mathrm{author})$, and the
+signer-only principal of Equation~(\ref{eq:indkey}). Table~\ref{tab:binding} reports the
+outcome.
+
+The finding is that the attribute the uploader chooses carries no protection at all. Against a
+fixed-metadata adversary the two principals behave identically, because the author never
+varies, so an evaluation that omits this attack cannot tell them apart. Against the varying
+adversary the principal that includes the author collapses to identifier counting: one key
+mints one principal per document, and the cap applies to nothing. The signer-only principal is
+unchanged, because the service assigns that identity from the key that verified the document
+and the adversary holds exactly one key.
+
+We report this because the earlier form of our own rule included the author, and the
+measurement above is what rules it out. An aggregation rule of this kind should be stated
+together with the binding of every attribute it groups on, and tested against an adversary
+permitted to vary each of them.
+
+\input{tables/tab_binding.tex}
 
 \subsection{Detection Quality and Operating Point}
 \label{sec:res:detection}
@@ -1609,8 +1671,8 @@ not empirically calibrated. Confidence intervals for the pinned main study condi
 seeds, while the local confirmation has one seed and 100 questions per cell.
 
 The HMAC experiment assumes a protected shared key and a trusted tag-generation service under
-adversary $\mathcal{A}_1$. Authorized-publisher compromise is evaluated separately under
-$\mathcal{A}_2$ (Section~\ref{sec:compromise}), but replay, freshness, and revocation are not
+adversary $\mathcal{U}$. Authorized-publisher compromise is evaluated separately under
+$\mathcal{C}$ (Section~\ref{sec:compromise}), but replay, freshness, and revocation are not
 tested, and we neither compare HMAC with public-key signatures nor measure the end-to-end
 operational cost of key management. Main-study latencies exclude model inference
 and network overhead; local-model timings are cache-dependent and are not interpreted.

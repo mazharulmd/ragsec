@@ -68,10 +68,11 @@ def test_distinct_documents_from_one_source_share_a_class() -> None:
     assert a == b
 
 
-def test_different_sources_are_different_classes() -> None:
+def test_a_differing_source_label_alone_does_not_make_a_second_principal() -> None:
+    """A source label is chosen by whoever uploads, so it cannot stand for a second party."""
     a = independence_key(_chunk("doc-1", source_id="wiki"))
     b = independence_key(_chunk("doc-2", source_id="archive"))
-    assert a != b
+    assert a == b
 
 
 def test_a_verified_signature_separates_proved_from_claimed_origin() -> None:
@@ -91,27 +92,30 @@ def test_signer_states_are_distinguished() -> None:
 
 def test_doc_id_field_reproduces_identifier_counting() -> None:
     """The control arm of the ablation must behave like the mechanism it replaces."""
-    a = independence_key(_chunk("doc-1", source_id="wiki"), fields=("doc_id",))
-    b = independence_key(_chunk("doc-2", source_id="wiki"), fields=("doc_id",))
+    a = independence_key(_chunk("doc-1"), fields=("doc_id",), allow_unbound=True)
+    b = independence_key(_chunk("doc-2"), fields=("doc_id",), allow_unbound=True)
     assert a != b
 
 
 def test_epoch_buckets_group_one_upload_window() -> None:
     same = independence_key(
-        _chunk("d1", ingest_time=10.0), fields=("source_id", "epoch"), epoch_seconds=100.0
+        _chunk("d1", ingest_time=10.0), fields=("epoch",), epoch_seconds=100.0,
+        allow_unbound=True,
     )
     near = independence_key(
-        _chunk("d2", ingest_time=90.0), fields=("source_id", "epoch"), epoch_seconds=100.0
+        _chunk("d2", ingest_time=90.0), fields=("epoch",), epoch_seconds=100.0,
+        allow_unbound=True,
     )
     later = independence_key(
-        _chunk("d3", ingest_time=250.0), fields=("source_id", "epoch"), epoch_seconds=100.0
+        _chunk("d3", ingest_time=250.0), fields=("epoch",), epoch_seconds=100.0,
+        allow_unbound=True,
     )
     assert same == near
     assert same != later
 
 
 def test_unknown_field_is_rejected() -> None:
-    with pytest.raises(ValueError, match="Unknown independence field"):
+    with pytest.raises(ValueError, match="Unknown principal field"):
         independence_key(_chunk("d"), fields=("nonsense",))
 
 
@@ -140,13 +144,13 @@ def test_discounting_removes_the_volume_advantage() -> None:
     )
 
 
-def test_genuinely_independent_sources_still_earn_the_bonus() -> None:
+def test_genuinely_independent_signers_still_earn_the_bonus() -> None:
     """Discounting must not punish real corroboration, or it is just a weaker aggregator."""
     correlated = AnswerGroup([
-        _answer(_chunk(f"d{i}", source_id="one-source"), 1.0) for i in range(3)
+        _answer(_chunk(f"d{i}", verified_signer="key-a"), 1.0) for i in range(3)
     ])
     independent = AnswerGroup([
-        _answer(_chunk(f"d{i}", source_id=f"source-{i}"), 1.0) for i in range(3)
+        _answer(_chunk(f"d{i}", verified_signer=f"key-{i}"), 1.0) for i in range(3)
     ])
     assert independent.total_weight(0.25, independence_discounting=True) > \
         correlated.total_weight(0.25, independence_discounting=True)
@@ -181,9 +185,9 @@ def test_discounting_off_reproduces_the_original_weighting_exactly() -> None:
 
 def test_classes_partition_every_member() -> None:
     members = [
-        _answer(_chunk("d1", source_id="a"), 1.0),
-        _answer(_chunk("d2", source_id="a"), 1.0),
-        _answer(_chunk("d3", source_id="b"), 1.0),
+        _answer(_chunk("d1", verified_signer="key-a"), 1.0),
+        _answer(_chunk("d2", verified_signer="key-a"), 1.0),
+        _answer(_chunk("d3", verified_signer="key-b"), 1.0),
     ]
     grouped = AnswerGroup(members).classes()
     assert len(grouped) == 2
@@ -220,3 +224,79 @@ def test_layer_passes_its_settings_through_to_weighting() -> None:
         layer.epoch_seconds,
     )
     assert weigh(genuine) > weigh(adversary)
+
+
+# ---------------------------------------------------------------------------
+# What the principal must resist
+# ---------------------------------------------------------------------------
+
+
+def test_a_key_holder_cannot_mint_principals_from_the_author_field() -> None:
+    """The flaw this module was revised to close.
+
+    The signing envelope covers version, document id, source and text. It does not cover the
+    author, so a holder of one valid key could vary that field and still verify. While the
+    principal included the author, five such documents counted as five agreeing parties, and
+    the cap the rule exists to apply did not apply at all.
+    """
+    keys = {
+        independence_key(_chunk(f"evil-{i}", verified_signer="key-a", author=f"made-up-{i}"))
+        for i in range(5)
+    }
+
+    assert keys == {("signer:key-a",)}
+
+
+def test_a_key_holder_cannot_mint_principals_from_the_source_label() -> None:
+    """A compromised signer chooses the source label before signing, so it binds nothing."""
+    keys = {
+        independence_key(_chunk(f"evil-{i}", verified_signer="key-a", source_id=f"src-{i}"))
+        for i in range(5)
+    }
+
+    assert keys == {("signer:key-a",)}
+
+
+def test_a_key_holder_cannot_mint_principals_from_document_identifiers() -> None:
+    keys = {
+        independence_key(_chunk(f"evil-{i}", verified_signer="key-a")) for i in range(20)
+    }
+
+    assert len(keys) == 1
+
+
+@pytest.mark.parametrize("field", ["source_id", "author", "doc_id", "epoch"])
+def test_attributes_the_uploader_chooses_are_refused_by_default(field: str) -> None:
+    with pytest.raises(ValueError, match="chosen by whoever uploads"):
+        independence_key(_chunk("d"), fields=(field,))
+
+
+def test_an_ablation_may_still_request_them_deliberately() -> None:
+    key = independence_key(_chunk("d", author="someone"), fields=("author",),
+                           allow_unbound=True)
+
+    assert key == ("someone",)
+
+
+def test_unsigned_documents_form_a_single_principal() -> None:
+    """Without proof of origin there is no basis for calling two uploads two parties."""
+    keys = {independence_key(_chunk(f"d{i}", source_id=f"src-{i}")) for i in range(5)}
+
+    assert keys == {(UNSIGNED,)}
+
+
+def test_the_layer_refuses_an_unbound_principal() -> None:
+    with pytest.raises(ValueError, match="chosen by whoever uploads"):
+        RobustAggregationLayer(
+            independence_discounting=True, independence_fields=("signer", "author")
+        )
+
+
+def test_the_layer_accepts_one_for_an_ablation() -> None:
+    layer = RobustAggregationLayer(
+        independence_discounting=True,
+        independence_fields=("signer", "author"),
+        allow_unbound_fields=True,
+    )
+
+    assert layer.allow_unbound_fields is True

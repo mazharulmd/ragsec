@@ -2096,6 +2096,23 @@ def macros(
                     if acc:
                         macro(f"compromiseCleanAcc{cname}{tag}B{n}", f"{acc[0]:.2f}")
 
+    # Binding: whether the attribute the rule groups on is one the adversary can choose.
+    binding = [r for r in studies.get("binding", []) if r["attack"] != "clean"]
+    if binding:
+        for dataset in {r["dataset"] for r in binding}:
+            tag = dataset.capitalize()
+            for rule in ("identifier", "unbound", "bound"):
+                for diversify, dname in ((False, "Fixed"), (True, "Varies")):
+                    pooled = seed_summary(
+                        [r for r in binding if r["dataset"] == dataset
+                         and r["rule"] == rule and r["diversify_metadata"] is diversify],
+                        ["seed"], "conditional_asr", "n_baseline_correct",
+                    )
+                    values = [v[0] for v in pooled.values()]
+                    if values:
+                        macro(f"binding{rule.capitalize()}{dname}{tag}",
+                              f"{statistics.fmean(values):.2f}")
+
     # Publisher-diversity control: whether the mechanism's benefit tracks how many independent
     # publishers actually contribute the corpus.
     diversity = studies.get("diversity", [])
@@ -2419,7 +2436,7 @@ def tab_compromise(rows: list[Row], out_dir: Path) -> Path:
         r"\end{tabular}",
         r"\par\vspace{3pt}",
         r"\noindent\parbox{\linewidth}{\footnotesize Attributable success with abstention on "
-        r"attacked queries in parentheses, under adversary $\mathcal{A}_2$, which holds one "
+        r"attacked queries in parentheses, under adversary $\mathcal{C}$, which holds one "
         r"authorised publisher's signing key. Signed ingestion admits its documents by "
         r"construction, so the rows differ only in the unit of corroboration. Pooled over "
         r"three seeds.}",
@@ -2428,12 +2445,71 @@ def tab_compromise(rows: list[Row], out_dir: Path) -> Path:
     return _write(out_dir / "tab_compromise.tex", "\n".join(lines))
 
 
+RULE_LABELS = {
+    "identifier": "Document identifier",
+    "unbound": "Signer, source and author",
+    "bound": "Verified signer",
+}
+RULE_ORDER = ("identifier", "unbound", "bound")
+
+
+def tab_binding(rows: list[Row], out_dir: Path) -> Path:
+    """Attack success per aggregation rule, with and without a metadata-varying adversary."""
+    datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
+    attacked = [r for r in rows if r["attack"] != "clean"]
+    casr = seed_summary(attacked, ["dataset", "rule", "diversify_metadata"],
+                        "conditional_asr", "n_baseline_correct")
+    abstain = seed_summary(attacked, ["dataset", "rule", "diversify_metadata"],
+                           "abstention_rate", "n_attacked")
+
+    lines = [
+        r"\begin{table*}[t]",
+        r"\begin{adjustwidth}{-\extralength}{0cm}",
+        r"\centering",
+        r"\footnotesize",
+        r"\setlength{\tabcolsep}{4pt}",
+        r"\caption{Binding of the grouping attribute.\label{tab:binding}}",
+        r"\begin{tabular}{llrr}",
+        r"\toprule",
+        r"Corpus & Aggregation rule & Fixed metadata & Varies author \\",
+        r"\midrule",
+    ]
+    for dataset in datasets:
+        for i, rule in enumerate(RULE_ORDER):
+            cells = []
+            for diversify in (False, True):
+                hit = casr.get((dataset, rule, diversify))
+                abst = abstain.get((dataset, rule, diversify))
+                if hit is None:
+                    cells.append("n/a")
+                elif abst is None:
+                    cells.append(f"{hit[0]:.2f}")
+                else:
+                    cells.append(f"{hit[0]:.2f} ({abst[0]:.2f})")
+            label = DATASET_LABELS[dataset] if i == 0 else ""
+            lines.append(f"{label} & {RULE_LABELS[rule]} & " + " & ".join(cells) + r" \\")
+        lines.append(r"\addlinespace")
+    lines += [
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\par\vspace{3pt}",
+        r"\noindent\parbox{\linewidth}{\footnotesize Attributable success with abstention "
+        r"on attacked queries in parentheses, at five poisoned documents per target under "
+        r"adversary $\mathcal{C}$, which holds one authorised publisher's key. The author is "
+        r"not covered by the signing envelope, so varying it costs the adversary nothing. "
+        r"Pooled over three seeds.}",
+        r"\end{adjustwidth}",
+        r"\end{table*}",
+    ]
+    return _write(out_dir / "tab_binding.tex", "\n".join(lines))
+
+
 def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
     """Regenerate every table and figure the manuscript depends on."""
     _style()
     studies = {name: load_rows(results_dir, name) for name in
                ("main", "evasion", "budget", "threshold", "backfill", "backfill_strict",
-                "provenance", "generator", "compromise", "diversity")}
+                "provenance", "generator", "compromise", "diversity", "binding")}
     tables = output_dir / "tables"
     figures = output_dir / "figures"
     written: list[Path] = [
@@ -2589,6 +2665,8 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
         attempt("tab_compromise", lambda: tab_compromise(studies["compromise"], tables))
     if studies["diversity"]:
         attempt("fig_diversity", lambda: fig_diversity(studies["diversity"], figures))
+    if studies["binding"]:
+        attempt("tab_binding", lambda: tab_binding(studies["binding"], tables))
     if studies["threshold"]:
         attempt("fig_detection", lambda: fig_detection(studies["threshold"], figures))
         attempt("fig_threshold", lambda: fig_threshold(studies["threshold"], figures))

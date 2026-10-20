@@ -31,6 +31,7 @@ from ragsec.core.models import RetrievedChunk
 from ragsec.defenses.independence import (
     DEFAULT_EPOCH_SECONDS,
     DEFAULT_FIELDS,
+    UNBOUND_FIELDS,
     independence_key,
 )
 
@@ -70,11 +71,14 @@ class AnswerGroup:
         self,
         fields: Sequence[str] = DEFAULT_FIELDS,
         epoch_seconds: float = DEFAULT_EPOCH_SECONDS,
+        allow_unbound: bool = False,
     ) -> dict[tuple[str, ...], list[IsolatedAnswer]]:
         """Partition the members into provenance independence classes."""
         grouped: dict[tuple[str, ...], list[IsolatedAnswer]] = {}
         for member in self.members:
-            key = independence_key(member.chunk.chunk, fields, epoch_seconds)
+            key = independence_key(
+                member.chunk.chunk, fields, epoch_seconds, allow_unbound=allow_unbound
+            )
             grouped.setdefault(key, []).append(member)
         return grouped
 
@@ -85,6 +89,7 @@ class AnswerGroup:
         within_class_discount: float = 0.0,
         fields: Sequence[str] = DEFAULT_FIELDS,
         epoch_seconds: float = DEFAULT_EPOCH_SECONDS,
+        allow_unbound: bool = False,
     ) -> float:
         """Weight of this answer, optionally discounting non-independent corroboration.
 
@@ -98,7 +103,7 @@ class AnswerGroup:
             base = sum(m.weight for m in self.members)
             return base * (1.0 + redundancy_bonus * (len(self.sources) - 1))
 
-        grouped = self.classes(fields, epoch_seconds)
+        grouped = self.classes(fields, epoch_seconds, allow_unbound)
         base = 0.0
         for members in grouped.values():
             weights = sorted((m.weight for m in members), reverse=True)
@@ -128,6 +133,7 @@ class RobustAggregationLayer(DefenseLayer):
         independence_discounting: bool = False,
         within_class_discount: float = 0.0,
         independence_fields: Sequence[str] = DEFAULT_FIELDS,
+        allow_unbound_fields: bool = False,
         epoch_seconds: float = DEFAULT_EPOCH_SECONDS,
     ) -> None:
         self.margin = margin
@@ -145,6 +151,15 @@ class RobustAggregationLayer(DefenseLayer):
         self.independence_discounting = independence_discounting
         self.within_class_discount = within_class_discount
         self.independence_fields = tuple(independence_fields)
+        #: Only an ablation should count an attribute the uploader chooses; the constructor
+        #: refuses one otherwise, so a deployment cannot reach that state by accident.
+        self.allow_unbound_fields = allow_unbound_fields
+        unbound = [f for f in self.independence_fields if f in UNBOUND_FIELDS]
+        if unbound and not allow_unbound_fields:
+            raise ValueError(
+                f"{unbound} are chosen by whoever uploads the document; pass "
+                "allow_unbound_fields=True only to measure that effect"
+            )
         self.epoch_seconds = epoch_seconds
         self.last_groups: list[tuple[float, AnswerGroup]] = []
         self.last_isolated: list[IsolatedAnswer] = []
@@ -224,6 +239,7 @@ class RobustAggregationLayer(DefenseLayer):
                         self.within_class_discount,
                         self.independence_fields,
                         self.epoch_seconds,
+                        self.allow_unbound_fields,
                     ),
                     g,
                 )
