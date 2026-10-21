@@ -1041,7 +1041,7 @@ def fig_provenance(rows: list[Row], out_dir: Path) -> Path:
         ax.set_title(DATASET_LABELS[dataset], fontsize=8.5)
     axes[0][0].set_ylabel("Attack success rate")
     axes[0][0].legend(fontsize=6.8, loc="upper right")
-    return _save(fig, out_dir, "fig9_provenance")
+    return _save(fig, out_dir, "fig3_provenance")
 
 
 def fig_latency(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
@@ -2374,7 +2374,7 @@ def fig_compromise(rows: list[Row], out_dir: Path) -> Path:
     handles, labels = axes[0][0].get_legend_handles_labels()
     fig.legend(handles, labels, ncol=2, loc="lower center", bbox_to_anchor=(0.5, -0.20),
                fontsize=6.8)
-    return _save(fig, out_dir, "fig13_compromise")
+    return _save(fig, out_dir, "fig4_compromise")
 
 
 def fig_diversity(rows: list[Row], out_dir: Path) -> Path:
@@ -2412,7 +2412,7 @@ def fig_diversity(rows: list[Row], out_dir: Path) -> Path:
     handles, labels = axes[0][0].get_legend_handles_labels()
     fig.legend(handles, labels, ncol=2, loc="lower center", bbox_to_anchor=(0.5, -0.20),
                fontsize=6.8)
-    return _save(fig, out_dir, "fig14_diversity")
+    return _save(fig, out_dir, "fig5_diversity")
 
 
 def tab_compromise(
@@ -2491,7 +2491,7 @@ def tab_compromise(
 
 RULE_LABELS = {
     "identifier": "Document identifier",
-    "unbound": "Signer, source and author",
+    "unbound": "Signer, source, author",
     "bound": "Verified signer",
 }
 RULE_ORDER = ("identifier", "unbound", "bound")
@@ -2513,16 +2513,25 @@ def tab_binding(rows: list[Row], out_dir: Path) -> Path:
     abstain = seed_summary(attacked, ["dataset", "rule", "diversify_metadata"],
                            "abstention_rate", "n_attacked")
 
+    # One corpus needs no corpus column, and the table then fits a single column.
+    single = len(datasets) == 1
+    corpus_note = (
+        f" Measured on {DATASET_LABELS[datasets[0]]}." if single else ""
+    )
     lines = [
-        r"\begin{table*}[t]",
-        r"\begin{adjustwidth}{-\extralength}{0cm}",
+        r"\begin{table}[t]" if single else r"\begin{table*}[t]",
+    ]
+    if not single:
+        lines.append(r"\begin{adjustwidth}{-\extralength}{0cm}")
+    lines += [
         r"\centering",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{4pt}",
         r"\caption{Binding of the grouping attribute.\label{tab:binding}}",
-        r"\begin{tabular}{llrr}",
+        r"\begin{tabular}{" + ("lrr" if single else "llrr") + r"}",
         r"\toprule",
-        r"Corpus & Aggregation rule & Fixed metadata & Varies author \\",
+        ("" if single else r"Corpus & ")
+        + r"Aggregation rule & Fixed metadata & Varies author \\",
         r"\midrule",
     ]
     for dataset in datasets:
@@ -2537,9 +2546,12 @@ def tab_binding(rows: list[Row], out_dir: Path) -> Path:
                     cells.append(f"{hit[0]:.2f}")
                 else:
                     cells.append(f"{hit[0]:.2f} ({abst[0]:.2f})")
-            label = DATASET_LABELS[dataset] if i == 0 else ""
-            lines.append(f"{label} & {RULE_LABELS[rule]} & " + " & ".join(cells) + r" \\")
-        lines.append(r"\addlinespace")
+            prefix = "" if single else (
+                f"{DATASET_LABELS[dataset] if i == 0 else ''} & "
+            )
+            lines.append(prefix + f"{RULE_LABELS[rule]} & " + " & ".join(cells) + r" \\")
+        if not single:
+            lines.append(r"\addlinespace")
     lines += [
         r"\bottomrule",
         r"\end{tabular}",
@@ -2547,11 +2559,12 @@ def tab_binding(rows: list[Row], out_dir: Path) -> Path:
         r"\noindent\parbox{\linewidth}{\footnotesize Attributable success with abstention "
         r"on attacked queries in parentheses, at five poisoned documents per target under "
         r"adversary $\mathcal{C}$, which holds one authorised publisher's key. The author is "
-        r"not covered by the signing envelope, so varying it costs the adversary nothing. "
-        r"Pooled over three seeds.}",
-        r"\end{adjustwidth}",
-        r"\end{table*}",
+        r"not covered by the signing envelope, so varying it costs the adversary nothing."
+        + corpus_note + r" Pooled over three seeds.}",
     ]
+    if not single:
+        lines.append(r"\end{adjustwidth}")
+    lines.append(r"\end{table}" if single else r"\end{table*}")
     return _write(out_dir / "tab_binding.tex", "\n".join(lines))
 
 
