@@ -1,0 +1,31 @@
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\scriptsize
+\setlength{\tabcolsep}{2pt}
+\caption{Local-model confirmation outcomes for three attack types. ASR is unconditional; attributable ASR is restricted to queries the same configuration answered correctly in its clean run. $n_0$ is the clean-correct denominator. Brackets give 95\% question-cluster bootstrap intervals over 100 distinct SQuAD questions, conditional on one seed.\label{tab:local-model}}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.25in}>{\raggedright\arraybackslash}p{1.1in}>{\raggedright\arraybackslash}p{0.85in}Xrrr@{}}
+\toprule
+\textbf{Model} & \textbf{Defense} & \textbf{Attack} & \shortstack{\textbf{Clean acc.}/\textbf{abst.}} & \shortstack{\textbf{ASR}\\\textbf{(95\% cluster CI)}} & \shortstack{\textbf{Attributable ASR}\\\textbf{(95\% cluster CI)}} & \textbf{$n_0$}\\
+\midrule
+Qwen2.5 7B (Ollama) & None & PoisonedRAG & 0.77 / 0.15 & 0.16 [0.09, 0.24] & 0.12 [0.05, 0.19] & 77 \\
+Qwen2.5 7B (Ollama) & None & Prompt injection & 0.77 / 0.15 & 0.13 [0.07, 0.20] & 0.12 [0.05, 0.19] & 77 \\
+Qwen2.5 7B (Ollama) & None & Adaptive poison & 0.77 / 0.15 & 0.37 [0.28, 0.47] & 0.31 [0.21, 0.42] & 77 \\
+Qwen2.5 7B (Ollama) & Full stack & PoisonedRAG & 0.73 / 0.17 & 0.00 [0.00, 0.00] & 0.00 [0.00, 0.00] & 73 \\
+Qwen2.5 7B (Ollama) & Full stack & Prompt injection & 0.73 / 0.17 & 0.00 [0.00, 0.00] & 0.00 [0.00, 0.00] & 73 \\
+Qwen2.5 7B (Ollama) & Full stack & Adaptive poison & 0.73 / 0.17 & 0.28 [0.19, 0.37] & 0.27 [0.18, 0.38] & 73 \\
+Qwen2.5 7B (Ollama) & Full + independence disc. & PoisonedRAG & 0.73 / 0.17 & 0.00 [0.00, 0.00] & 0.00 [0.00, 0.00] & 73 \\
+Qwen2.5 7B (Ollama) & Full + independence disc. & Prompt injection & 0.73 / 0.17 & 0.00 [0.00, 0.00] & 0.00 [0.00, 0.00] & 73 \\
+Qwen2.5 7B (Ollama) & Full + independence disc. & Adaptive poison & 0.73 / 0.17 & 0.26 [0.17, 0.35] & 0.25 [0.15, 0.35] & 73 \\
+Llama 3.1 8B (Ollama) & None & PoisonedRAG & 0.76 / 0.18 & 0.18 [0.11, 0.25] & 0.12 [0.05, 0.20] & 76 \\
+Llama 3.1 8B (Ollama) & None & Prompt injection & 0.76 / 0.18 & 0.30 [0.21, 0.39] & 0.28 [0.18, 0.38] & 76 \\
+Llama 3.1 8B (Ollama) & None & Adaptive poison & 0.76 / 0.18 & 0.33 [0.24, 0.42] & 0.34 [0.24, 0.45] & 76 \\
+Llama 3.1 8B (Ollama) & Full stack & PoisonedRAG & 0.76 / 0.19 & 0.00 [0.00, 0.00] & 0.00 [0.00, 0.00] & 76 \\
+Llama 3.1 8B (Ollama) & Full stack & Prompt injection & 0.76 / 0.19 & 0.00 [0.00, 0.00] & 0.00 [0.00, 0.00] & 76 \\
+Llama 3.1 8B (Ollama) & Full stack & Adaptive poison & 0.76 / 0.19 & 0.21 [0.13, 0.29] & 0.22 [0.14, 0.32] & 76 \\
+Llama 3.1 8B (Ollama) & Full + independence disc. & PoisonedRAG & 0.76 / 0.19 & 0.00 [0.00, 0.00] & 0.00 [0.00, 0.00] & 76 \\
+Llama 3.1 8B (Ollama) & Full + independence disc. & Prompt injection & 0.76 / 0.19 & 0.00 [0.00, 0.00] & 0.00 [0.00, 0.00] & 76 \\
+Llama 3.1 8B (Ollama) & Full + independence disc. & Adaptive poison & 0.76 / 0.19 & 0.19 [0.12, 0.27] & 0.20 [0.11, 0.29] & 76 \\
+\bottomrule
+\end{tabularx}
+\end{adjustwidth}
+\end{table*}

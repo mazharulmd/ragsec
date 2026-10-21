@@ -8,6 +8,7 @@ import random
 import sys
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 from ragsec.attacks import ATTACK_REGISTRY, AttackTarget, get_attack
 from ragsec.defenses import MonitoringLayer
@@ -19,11 +20,24 @@ from ragsec.eval import (
     format_summary_table,
     load_dataset,
 )
-from ragsec.eval.runner import decoy_answers
+from ragsec.eval.runner import decoy_answers, new_signing_key, sign_documents
 
 
 def _load_config(path: str | None) -> ExperimentConfig:
     return ExperimentConfig.from_yaml(path) if path else ExperimentConfig()
+
+
+def _ingest_clean_corpus(config: ExperimentConfig, dataset: Any):
+    """Build the demo pipeline and ingest clean data through its optional trusted signer."""
+    signing_key = new_signing_key() if config.sign_corpus else None
+    pipeline = build_pipeline(config, signing_key=signing_key)
+    documents = (
+        sign_documents(dataset.documents, signing_key)
+        if signing_key is not None
+        else dataset.documents
+    )
+    pipeline.ingest(documents)
+    return pipeline
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -61,8 +75,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 def cmd_query(args: argparse.Namespace) -> int:
     config = _load_config(args.config)
     dataset = load_dataset(config.dataset)
-    pipeline = build_pipeline(config)
-    pipeline.ingest(dataset.documents)
+    pipeline = _ingest_clean_corpus(config, dataset)
     query = args.question
     if args.attack:
         attack = get_attack(args.attack)
@@ -92,12 +105,11 @@ def cmd_query(args: argparse.Namespace) -> int:
 def cmd_monitor(args: argparse.Namespace) -> int:
     config = _load_config(args.config)
     dataset = load_dataset(config.dataset)
-    pipeline = build_pipeline(config)
+    pipeline = _ingest_clean_corpus(config, dataset)
     monitor = next((d for d in pipeline.defenses if isinstance(d, MonitoringLayer)), None)
     if monitor is None:
         monitor = MonitoringLayer(window_size=len(dataset.qa))
         pipeline.add_defense(monitor)
-    pipeline.ingest(dataset.documents)
     questions = [ex.question for ex in dataset.qa]
     monitor.register_benchmarks(questions)
     for ex in dataset.qa[:5]:
@@ -145,6 +157,7 @@ def cmd_suite(args: argparse.Namespace) -> int:
         base_url=args.base_url or None,
         api_key_env=args.api_key_env or None,
         queries=args.queries or None,
+        confirmation_configs=args.confirmation_configs or None,
     )
     for study in args.studies or list(STUDIES):
         print(f"{study}: {len(rows.get(study, []))} rows -> {args.output_dir}/{study}.jsonl")
@@ -152,7 +165,7 @@ def cmd_suite(args: argparse.Namespace) -> int:
 
 
 def cmd_figures(args: argparse.Namespace) -> int:
-    from ragsec.eval.report import build_report
+    from ragsec.eval.report import build_report, verify_macros
     from ragsec.eval.texcheck import check_manuscript
 
     output_dir = Path(args.output_dir)
@@ -173,9 +186,12 @@ def cmd_figures(args: argparse.Namespace) -> int:
     if args.strict:
         for warning in report.warnings:
             print(f"  manuscript (minor): {warning}")
+    missing_macros = verify_macros(Path(args.manuscript), output_dir / "tables" / "macros.tex")
+    for macro in missing_macros:
+        print(f"  manuscript: undefined result macro \\{macro}")
     # A partially-run suite legitimately leaves tables and figures missing, so this reports
     # rather than fails unless the caller asked for strictness.
-    return 1 if (args.strict and report.problems) else 0
+    return 1 if (args.strict and (report.problems or missing_macros)) else 0
 
 
 def cmd_manuscript(args: argparse.Namespace) -> int:
@@ -232,7 +248,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_suite.add_argument("--studies", nargs="*", default=[], help="subset of studies to run")
     p_suite.add_argument("--datasets", nargs="*", default=[], help="subset of datasets")
     p_suite.add_argument("--seeds", nargs="*", type=int, default=[], help="random seeds")
-    p_suite.add_argument("--output-dir", default="results/paper")
+    p_suite.add_argument("--output-dir", default="results/paper-pinned")
     p_suite.add_argument("--no-resume", action="store_true", help="recompute finished cells")
     p_suite.add_argument(
         "--models", nargs="*", default=[],
@@ -256,10 +272,22 @@ def build_parser() -> argparse.ArgumentParser:
             "inside a provider's free-tier request cap"
         ),
     )
+    from ragsec.eval.suite import CONFIG_LABELS, CONFIRMATION_CONFIGS
+
+    p_suite.add_argument(
+        "--confirmation-configs", nargs="+", default=None,
+        # Taken from the suite's own configurations so a newly added one is selectable here
+        # without a second edit.
+        choices=tuple(CONFIG_LABELS),
+        help=(
+            "defense configurations for the confirmation study "
+            f"(default: {' '.join(CONFIRMATION_CONFIGS)})"
+        ),
+    )
     p_suite.set_defaults(func=cmd_suite)
 
     p_fig = sub.add_parser("figures", help="build the paper's tables and figures from results")
-    p_fig.add_argument("--results-dir", default="results/paper")
+    p_fig.add_argument("--results-dir", default="results/paper-pinned")
     p_fig.add_argument("--output-dir", default="paper")
     p_fig.add_argument("--manuscript", default="paper/preview.tex")
     p_fig.add_argument("--no-check", action="store_true", help="skip the manuscript checks")

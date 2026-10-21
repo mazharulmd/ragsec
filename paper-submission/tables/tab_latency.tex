@@ -1,0 +1,23 @@
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{Per-query latency on SQuAD, averaged over all attack runs.\label{tab:latency}}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Configuration} & \textbf{Retrieval (ms)} & \textbf{Filtering (ms)} & \textbf{Generation (ms)} & \textbf{Mean (ms)} & \textbf{p95 (ms)}\\
+\midrule
+No defense & 1.41 & 0.00 & 0.07 & 1.48 & 3.43\\
+L1 source verification & 0.09 & 0.01 & 0.13 & 0.23 & 0.28\\
+L2 retrieval filtering & 0.22 & 6.39 & 0.16 & 6.77 & 20.58\\
+L3 robust aggregation & 0.12 & 0.01 & 0.14 & 0.27 & 0.37\\
+L4 monitoring & 0.12 & 0.01 & 0.06 & 0.19 & 0.24\\
+Full defense & 0.15 & 8.63 & 0.28 & 9.06 & 16.69\\
+Full defense + HMAC-authenticated ingestion & 0.12 & 8.06 & 0.27 & 8.45 & 10.48\\
+\bottomrule
+\end{tabular}
+\par\vspace{3pt}
+\noindent\parbox{\linewidth}{\footnotesize Times exclude external model and network cost: the generator is a local mock, so these numbers isolate the overhead the defense layers themselves add.}
+\end{adjustwidth}
+\end{table*}

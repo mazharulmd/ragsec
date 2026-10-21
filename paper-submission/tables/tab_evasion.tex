@@ -1,0 +1,23 @@
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{Leave-one-out ablation of evasion techniques.\label{tab:evasion}}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Adaptive attacker variant} & \textbf{ASR (full)} & \textbf{Poison retr.} & \textbf{Filter TPR} & \textbf{Accuracy} & \textbf{ASR (HMAC)}\\
+\midrule
+All six techniques enabled & 0.82 \tiny[0.80,0.85] & 1.00 & 0.00 & 0.05 & 0.00\\
+$-$ Query paraphrase & 0.00 \tiny[0.00,0.01] & 1.00 & 0.15 & 0.42 & 0.00\\
+$-$ Assertive (non-imperative) payload & 0.00 \tiny[0.00,0.01] & 0.79 & 1.00 & 0.51 & 0.00\\
+$-$ Natural prose padding & 0.82 \tiny[0.80,0.85] & 1.00 & 0.00 & 0.05 & 0.00\\
+$-$ Similarity dilution & 0.82 \tiny[0.81,0.83] & 1.00 & 0.00 & 0.05 & 0.00\\
+$-$ Provenance spoofing & 0.00 \tiny[0.00,0.01] & 0.00 & n/a & 0.51 & 0.00\\
+$-$ Corroboration across documents & 0.82 \tiny[0.80,0.85] & 1.00 & 0.00 & 0.05 & 0.00\\
+\bottomrule
+\end{tabular}
+\par\vspace{3pt}
+\noindent\parbox{\linewidth}{\footnotesize Measured on SQuAD ($3$ poisoned documents per target). Each row disables one technique and leaves the other five in place, so a drop in ASR identifies a technique the defense depends on the adversary \emph{not} using. Bracketed values give the observed min-to-max range across seeds, not a confidence interval.}
+\end{adjustwidth}
+\end{table*}

@@ -15,6 +15,8 @@ from typing import Any
 from ragsec.core.models import Document, Provenance
 
 TOY_SOURCE = "curated-encyclopedia"
+SQUAD_REVISION = "7b6d24c440a36b6815f21b70d25016731768db1f"
+HOTPOTQA_REVISION = "1908d6afbbead072334abe2965f91bd2709910ab"
 
 
 @dataclass(frozen=True)
@@ -73,14 +75,19 @@ def load_hf_dataset(
     split: str = "validation",
     limit: int = 200,
     source_id: str = "huggingface",
+    revision: str | None = None,
 ) -> Dataset:
-    """Load a SQuAD-style dataset (``context``, ``question``, ``answers.text``)."""
+    """Load a SQuAD-style dataset, optionally pinned to a Hub commit revision."""
     try:
         from datasets import load_dataset as hf_load_dataset
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise ImportError("Install the optional extra: pip install 'ragsec[datasets]'") from exc
 
-    rows = hf_load_dataset(path, split=split)
+    if revision is None:
+        if path != "rajpurkar/squad":
+            raise ValueError("revision is required for non-default Hugging Face datasets")
+        revision = SQUAD_REVISION
+    rows = hf_load_dataset(path, split=split, revision=revision)
     records: list[dict[str, Any]] = []
     seen_contexts: dict[str, str] = {}
     for row in rows:
@@ -113,6 +120,7 @@ def load_hotpotqa_dataset(
     source_id: str = "hotpotqa",
     include_distractors: bool = True,
     skip_yes_no: bool = True,
+    revision: str | None = None,
 ) -> Dataset:
     """Load HotpotQA as a document collection.
 
@@ -126,7 +134,12 @@ def load_hotpotqa_dataset(
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise ImportError("Install the optional extra: pip install 'ragsec[datasets]'") from exc
 
-    rows = hf_load_dataset("hotpotqa/hotpot_qa", config, split=split)
+    rows = hf_load_dataset(
+        "hotpotqa/hotpot_qa",
+        config,
+        split=split,
+        revision=revision or HOTPOTQA_REVISION,
+    )
     records: list[dict[str, Any]] = []
     seen_titles: set[str] = set()
     n_questions = 0

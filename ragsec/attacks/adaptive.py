@@ -80,6 +80,7 @@ class AdaptivePoisonAttack(Attack):
         dilute_similarity: bool = True,
         spoof_source: bool = True,
         diversify: bool = True,
+        diversify_metadata: bool = False,
         padding_sentences: int = 3,
         spoofed_source_id: str = CORPUS_SOURCE,
         spoofed_trust: float = 0.9,
@@ -92,6 +93,12 @@ class AdaptivePoisonAttack(Attack):
         self.dilute_similarity = dilute_similarity
         self.spoof_source = spoof_source
         self.diversify = diversify
+        #: Vary the author label on every document, so that a defense grouping evidence by
+        #: that field sees one party as many. The signing envelope covers identity, source and
+        #: text but not the author, so a key holder may vary it freely and still verify.
+        #: Varying the source instead is self-defeating: the ingestion allowlist admits only
+        #: known sources, so a fresh label is rejected before aggregation ever sees it.
+        self.diversify_metadata = diversify_metadata
         self.padding_sentences = max(0, padding_sentences)
         self.spoofed_source_id = spoofed_source_id
         self.spoofed_trust = spoofed_trust
@@ -139,6 +146,12 @@ class AdaptivePoisonAttack(Attack):
         # first-sentence heuristics see only neutral prose.
         head, *tail = padding
         return " ".join([head, claim, *tail])
+
+    def author_for(self, variant: int) -> str | None:
+        """A fresh author per document when diversifying, otherwise the attack's own."""
+        if not self.diversify_metadata:
+            return self.author
+        return f"{self.author or 'contributor'}-{variant}"
 
     def bind_corpus(self, source_id: str) -> None:
         """Adopt the legitimate corpus's source identifier when spoofing provenance.

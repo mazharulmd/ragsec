@@ -1,5 +1,7 @@
-\begin{table}[H]
-\small
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
 \caption{Per-query latency on SQuAD, averaged over all attack runs. Times exclude external model and network cost: the generator is a local mock, so these numbers isolate the overhead the defense layers themselves add.\label{tab:latency}}
 \begin{tabular}{lrrrrr}
 \toprule
@@ -11,7 +13,8 @@ L2 retrieval filtering & 0.79 & 16.76 & 0.39 & 17.94 & 24.35\\
 L3 robust aggregation & 0.73 & 0.00 & 0.45 & 1.18 & 1.79\\
 L4 monitoring & 0.70 & 0.00 & 0.18 & 0.88 & 1.23\\
 Full defense & 0.53 & 25.20 & 0.76 & 26.50 & 33.18\\
-Full defense + signed ingestion & 0.42 & 25.72 & 0.76 & 26.91 & 34.03\\
+Full defense + HMAC-authenticated ingestion & 0.42 & 25.72 & 0.76 & 26.91 & 34.03\\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{adjustwidth}
+\end{table*}

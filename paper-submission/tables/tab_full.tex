@@ -1,0 +1,30 @@
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{Detailed behaviour of the layered defense on SQuAD.\label{tab:full}}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+\textbf{Attack} & \textbf{ASR} & \textbf{Attrib. ASR} & \textbf{Accuracy} & \textbf{Poison retr.} & \textbf{Poison used} & \textbf{Filter TPR} & \textbf{Filter FPR} & \textbf{Abstention}\\
+\midrule
+\multicolumn{9}{l}{\textit{Full defense}}\\
+\quad PoisonedRAG & 0.00 & 0.00 & 0.51 & 0.00 & 0.00 & n/a & 0.01 & 0.31\\
+\quad Trigger backdoor & 0.00 & 0.00 & 0.50 & 0.00 & 0.00 & n/a & 0.01 & 0.32\\
+\quad Prompt injection & 0.00 & 0.00 & 0.51 & 0.00 & 0.00 & n/a & 0.01 & 0.31\\
+\quad Context flooding & 0.49 & 0.00 & 0.51 & 0.00 & 0.00 & n/a & 0.01 & 0.31\\
+\quad Adaptive poisoning & 0.82 & 0.83 & 0.05 & 1.00 & 0.83 & 0.00 & 0.01 & 0.09\\
+\quad Clean & n/a & n/a & 0.51 & n/a & n/a & n/a & 0.01 & 0.31\\
+\multicolumn{9}{l}{\textit{Full defense + HMAC-authenticated ingestion}}\\
+\quad PoisonedRAG & 0.00 & 0.00 & 0.51 & 0.00 & 0.00 & n/a & 0.01 & 0.31\\
+\quad Trigger backdoor & 0.00 & 0.00 & 0.50 & 0.00 & 0.00 & n/a & 0.01 & 0.32\\
+\quad Prompt injection & 0.00 & 0.00 & 0.51 & 0.00 & 0.00 & n/a & 0.01 & 0.31\\
+\quad Context flooding & 0.49 & 0.00 & 0.51 & 0.00 & 0.00 & n/a & 0.01 & 0.31\\
+\quad Adaptive poisoning & 0.00 & 0.00 & 0.51 & 0.00 & 0.00 & n/a & 0.01 & 0.31\\
+\quad Clean & n/a & n/a & 0.51 & n/a & n/a & n/a & 0.01 & 0.31\\
+\bottomrule
+\end{tabular}
+\par\vspace{3pt}
+\noindent\parbox{\linewidth}{\footnotesize \emph{Attributable ASR} restricts attack success to the queries this same configuration answered correctly with no adversary present; the distinction matters for the suppression attack, since a pipeline that was already going to fail cannot meaningfully be said to have been suppressed. \emph{Poison retrieved} is the fraction of attacked queries for which a poisoned chunk entered the candidate set; \emph{poison used} is the fraction for which one supported the answer that was returned.}
+\end{adjustwidth}
+\end{table*}

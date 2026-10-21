@@ -23,7 +23,7 @@ class Provenance:
         author: Optional author or uploader identity.
         ingest_time: Unix timestamp of ingestion.
         trust_score: Prior trust in ``[0, 1]`` assigned to the source.
-        signature: Optional hex HMAC/signature over the content, verified at ingest.
+        signature: Optional hex HMAC over the versioned document ID, source ID, and text.
         extra: Free-form metadata.
     """
 
@@ -112,5 +112,8 @@ class RAGResponse:
     @property
     def filtered(self) -> list[RetrievedChunk]:
         """Chunks that were retrieved but removed by a defense layer."""
+        if "filtered_chunk_ids" in self.metadata:
+            filtered_ids = set(self.metadata["filtered_chunk_ids"])
+            return [rc for rc in self.retrieved if rc.chunk.chunk_id in filtered_ids]
         used_ids = {rc.chunk.chunk_id for rc in self.used}
         return [rc for rc in self.retrieved if rc.chunk.chunk_id not in used_ids]

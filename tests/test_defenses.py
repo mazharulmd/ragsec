@@ -38,6 +38,7 @@ from ragsec.defenses import (
     js_divergence,
     sign_document,
 )
+from ragsec.defenses.independence import VERIFIED_SIGNER_KEY
 
 CLEAN = [
     "Paris is the capital and largest city of France.",
@@ -105,6 +106,31 @@ def test_source_verification_trust_registry_and_dedupe() -> None:
     assert reasons == {"untrusted source": 2, "duplicate content": 1}
 
 
+def test_ingestion_trust_comes_from_policy_and_isolated_from_input_mutation() -> None:
+    document = Document(
+        text="trusted evidence",
+        provenance=Provenance(source_id="internal-wiki", trust_score=1.0),
+    )
+    layer = SourceVerificationLayer(source_trust={"internal-wiki": 0.8})
+    accepted = layer.on_ingest([document])
+
+    assert document.provenance.trust_score == 1.0
+    assert accepted[0] is not document
+    assert accepted[0].provenance.trust_score == 0.8
+
+    document.provenance.trust_score = 0.0
+    assert accepted[0].provenance.trust_score == 0.8
+
+
+def test_unmapped_source_uses_server_default_trust() -> None:
+    document = Document(
+        text="unmapped evidence",
+        provenance=Provenance(source_id="upload", trust_score=1.0),
+    )
+    accepted = SourceVerificationLayer(default_trust=0.2).on_ingest([document])
+    assert accepted[0].provenance.trust_score == 0.2
+
+
 def test_source_verification_recomputes_hash_for_dedupe() -> None:
     layer = SourceVerificationLayer()
     original = Document(text="same content")
@@ -129,11 +155,46 @@ def test_source_verification_allowlist_and_quota() -> None:
 def test_source_verification_signatures() -> None:
     key = b"secret-key"
     layer = SourceVerificationLayer(hmac_key=key, require_signature=True)
-    good = Document(text="signed", provenance=Provenance(signature=sign_document("signed", key)))
-    bad = Document(text="tampered", provenance=Provenance(signature=sign_document("other", key)))
+    good = Document(text="signed")
+    good.provenance.signature = sign_document(good, key)
+    bad = Document(text="other")
+    bad.provenance.signature = sign_document(bad, key)
+    bad.text = "tampered"
     missing = Document(text="unsigned")
-    assert layer.on_ingest([good, bad, missing]) == [good]
+    accepted = layer.on_ingest([good, bad, missing])
+    assert [d.doc_id for d in accepted] == [good.doc_id]
+    assert accepted[0].text == good.text
     assert {r.reason for r in layer.rejections} == {"invalid signature", "missing signature"}
+
+
+def test_verified_signature_is_recorded_on_the_accepted_document() -> None:
+    """Aggregation needs to know whose key vouched for a document, not merely that one did."""
+    key = b"secret-key"
+    layer = SourceVerificationLayer(hmac_key=key, signer_id="corpus-key")
+    signed = Document(text="signed")
+    signed.provenance.signature = sign_document(signed, key)
+    unsigned = Document(text="plain")
+
+    accepted = {d.text: d for d in layer.on_ingest([signed, unsigned])}
+    assert accepted["signed"].provenance.extra[VERIFIED_SIGNER_KEY] == "corpus-key"
+    assert VERIFIED_SIGNER_KEY not in accepted["plain"].provenance.extra
+
+
+def test_a_claimed_verification_marker_is_not_trusted() -> None:
+    """An uploader must not be able to assert that their own document was verified."""
+    layer = SourceVerificationLayer()
+    forged = Document(text="claims to be verified")
+    forged.provenance.extra[VERIFIED_SIGNER_KEY] = "corpus-key"
+    accepted = layer.on_ingest([forged])
+    assert VERIFIED_SIGNER_KEY not in accepted[0].provenance.extra
+
+
+def test_source_verification_rejects_malformed_signature_without_raising() -> None:
+    layer = SourceVerificationLayer(hmac_key=b"secret-key", require_signature=True)
+    malformed = Document(text="signed")
+    malformed.provenance.signature = "é" * 64
+    assert layer.on_ingest([malformed]) == []
+    assert layer.rejections[0].reason == "invalid signature"
 
 
 def test_source_verification_requires_key_for_required_signatures() -> None:
@@ -215,6 +276,35 @@ def test_robust_aggregation_preserves_clean_answer() -> None:
     assert response.metadata["generator"] == "robust_aggregation"
 
 
+def test_robust_aggregation_scores_retrieved_passage_not_answer_word_overlap() -> None:
+    from ragsec.core.llm import BaseLLM
+
+    class ConciseAnswerLLM(BaseLLM):
+        name = "concise-test"
+
+        def generate(self, prompt: str, *, system: str | None = None) -> str:
+            return "1953"
+
+    pipeline = RAGPipeline.from_defaults(
+        embedder=HashingEmbedder(dim=512),
+        llm=ConciseAnswerLLM(),
+        top_k=1,
+        defenses=[RobustAggregationLayer()],
+    )
+    pipeline.ingest(
+        [
+            Document(
+                text="The city was founded in 1953.",
+                provenance=Provenance(source_id="encyclopedia", trust_score=0.5),
+            )
+        ]
+    )
+
+    response = pipeline.query("In what year was the city founded?")
+
+    assert response.answer == "1953"
+
+
 def test_robust_aggregation_blocks_minority_poison() -> None:
     layer = RobustAggregationLayer()
     pipeline = build([layer])
@@ -226,13 +316,13 @@ def test_robust_aggregation_blocks_minority_poison() -> None:
     assert response.answer == ABSTAIN_ANSWER
 
 
-def test_robust_aggregation_downweights_injection_payloads() -> None:
+def test_robust_aggregation_abstains_on_conflicting_injection_answer() -> None:
     pipeline = build([RobustAggregationLayer()])
     attack = PromptInjectionAttack()
     pipeline.ingest(attack.generate_poison([TARGET], 1))
     response = pipeline.query(QUERY)
     assert not attack.is_success(TARGET, response.answer)
-    assert "Paris" in response.answer
+    assert response.answer == ABSTAIN_ANSWER
 
 
 # Layer 4

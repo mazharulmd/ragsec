@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import json
 import random
+import secrets
 from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
@@ -24,6 +25,7 @@ from ragsec.core.embedder import BaseEmbedder, get_embedder
 from ragsec.core.llm import BaseLLM, MockLLM, OpenAICompatibleLLM
 from ragsec.core.models import Document, RAGResponse
 from ragsec.core.pipeline import RAGPipeline
+from ragsec.core.scoring import answer_matches
 from ragsec.defenses import (
     MonitoringLayer,
     RetrievalFilterLayer,
@@ -32,7 +34,7 @@ from ragsec.defenses import (
 )
 from ragsec.defenses.ingestion import sign_document
 from ragsec.eval.data import Dataset, QAExample, load_dataset
-from ragsec.eval.metrics import MetricSummary, QueryRecord, answer_matches, summarize
+from ragsec.eval.metrics import MetricSummary, QueryRecord, summarize
 
 DEFENSE_REGISTRY: dict[str, type[DefenseLayer]] = {
     SourceVerificationLayer.name: SourceVerificationLayer,
@@ -42,6 +44,9 @@ DEFENSE_REGISTRY: dict[str, type[DefenseLayer]] = {
 }
 
 CLEAN_RUN = "clean"
+
+#: The publisher whose key a compromised-publisher run hands to the adversary.
+PUBLISHER_ZERO = "publisher-0"
 
 
 @dataclass
@@ -58,11 +63,37 @@ class ExperimentConfig:
     include_clean_run: bool = True
     benchmark_queries: int = 10
     canary_queries: int = 5
-    #: HMAC key used to sign the *legitimate* corpus before ingestion. This models an
-    #: enterprise ingestion pipeline in which curated content is signed at the source, and is
-    #: what makes ``require_signature`` on Layer 1 meaningful against a provenance-spoofing
-    #: adversary: claiming a trusted ``source_id`` is cheap, forging the HMAC is not.
-    sign_corpus: str | None = None
+    #: Whether the harness should model a trusted signer for legitimate corpus documents.
+    #: The signing key is generated at runtime and never stored in the config or result file.
+    sign_corpus: bool = False
+    #: How many mutually independent publishers sign the legitimate corpus. Signing everything
+    #: with one key models a single-publisher archive; real knowledge bases authorise many, and
+    #: only then does "how many independent parties attest this" differ from "how many
+    #: documents say this".
+    publishers: int = 1
+    #: Whether the adversary holds one publisher's signing key. This models the case signatures
+    #: cannot address on their own: an authorised publisher that is malicious or compromised.
+    #: Its documents verify correctly, so Layer 1 admits them by construction.
+    compromised_publisher: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.sign_corpus, bool):
+            raise ValueError(
+                "sign_corpus must be a boolean; keep signing keys out of configs"
+            )
+        if not isinstance(self.compromised_publisher, bool):
+            raise ValueError("compromised_publisher must be a boolean")
+        if not isinstance(self.publishers, int) or self.publishers < 1:
+            raise ValueError("publishers must be a positive integer")
+        if self.compromised_publisher and not self.sign_corpus:
+            raise ValueError(
+                "compromised_publisher requires sign_corpus: the adversary can only hold a "
+                "publisher key in a deployment that uses them"
+            )
+        for defense in self.defenses:
+            params = defense.get("params") or {}
+            if "hmac_key" in params:
+                raise ValueError("Do not store hmac_key in a config; pass it at runtime")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ExperimentConfig:
@@ -98,7 +129,12 @@ def build_llm(spec: dict[str, Any]) -> BaseLLM:
     raise ValueError(f"Unknown llm {name!r}; expected 'mock' or 'openai'")
 
 
-def build_defense(spec: dict[str, Any]) -> DefenseLayer:
+def build_defense(
+    spec: dict[str, Any],
+    *,
+    signing_key: bytes | None = None,
+    signing_keys: dict[str, bytes] | None = None,
+) -> DefenseLayer:
     name = spec["name"]
     try:
         cls = DEFENSE_REGISTRY[name]
@@ -108,35 +144,77 @@ def build_defense(spec: dict[str, Any]) -> DefenseLayer:
         ) from exc
     params = dict(spec.get("params") or {})
     if name == SourceVerificationLayer.name:
-        if isinstance(params.get("hmac_key"), str):
-            params["hmac_key"] = params["hmac_key"].encode("utf-8")
+        if "hmac_key" in params:
+            raise ValueError("Do not store hmac_key in a config; pass it at runtime")
+        if params.get("require_signature"):
+            if not signing_keys and signing_key is None:
+                raise ValueError(
+                    "signing_key must be provided at runtime when signatures are required"
+                )
+            if signing_keys:
+                params["hmac_keys"] = dict(signing_keys)
+            else:
+                params["hmac_key"] = signing_key
         if params.get("allowed_sources") is not None:
             params["allowed_sources"] = set(params["allowed_sources"])
     return cls(**params)
 
 
-def build_pipeline(config: ExperimentConfig) -> RAGPipeline:
+def build_pipeline(
+    config: ExperimentConfig,
+    *,
+    signing_key: bytes | None = None,
+    signing_keys: dict[str, bytes] | None = None,
+) -> RAGPipeline:
+    defenses = [
+        build_defense(spec, signing_key=signing_key, signing_keys=signing_keys)
+        for spec in config.defenses
+    ]
     return RAGPipeline.from_defaults(
         embedder=build_embedder(config.embedder),
         llm=build_llm(config.llm),
-        defenses=[build_defense(spec) for spec in config.defenses],
+        defenses=defenses,
         **config.pipeline,
     )
 
 
+def new_signing_key() -> bytes:
+    """Return a fresh 256-bit runtime key for the experiment's simulated trusted signer."""
+    return secrets.token_bytes(32)
+
+
+def sign_documents(documents: list[Document], key: bytes) -> list[Document]:
+    """Sign clean documents as the trusted corpus publisher for one experiment run."""
+    return [
+        replace(
+            doc,
+            provenance=replace(
+                doc.provenance,
+                signature=sign_document(doc, key),
+            ),
+        )
+        for doc in documents
+    ]
+
+
 def decoy_answers(qa: list[QAExample], rng: random.Random) -> dict[str, str]:
-    """Assign each question a plausible wrong answer taken from a different question."""
+    """Choose a different question's answer with no normalized substring overlap."""
     if len(qa) < 2:
-        return {ex.question: f"not {ex.answer}" for ex in qa}
-    order = list(range(len(qa)))
-    rng.shuffle(order)
+        raise ValueError("at least two QA examples are required to construct attack decoys")
     decoys: dict[str, str] = {}
-    for position, index in enumerate(order):
-        gold = qa[index].answer
-        candidate = qa[order[(position + 1) % len(order)]].answer
-        if answer_matches(candidate, gold) or answer_matches(gold, candidate):
-            candidate = qa[order[(position + 2) % len(order)]].answer
-        decoys[qa[index].question] = candidate
+    for index, example in enumerate(qa):
+        candidates = [
+            other.answer
+            for other_index, other in enumerate(qa)
+            if other_index != index
+            and not answer_matches(other.answer, example.answer)
+            and not answer_matches(example.answer, other.answer)
+        ]
+        if not candidates:
+            raise ValueError(
+                f"no non-overlapping decoy answer is available for question {example.question!r}"
+            )
+        decoys[example.question] = rng.choice(candidates)
     return decoys
 
 
@@ -202,6 +280,14 @@ class ExperimentRunner:
     def __init__(self, config: ExperimentConfig, dataset: Dataset | None = None) -> None:
         self.config = config
         self.dataset = dataset or load_dataset(config.dataset)
+        self._signing_keys: dict[str, bytes] = (
+            {f"publisher-{i}": new_signing_key() for i in range(config.publishers)}
+            if config.sign_corpus
+            else {}
+        )
+        self._signing_key = (
+            self._signing_keys[PUBLISHER_ZERO] if self._signing_keys else None
+        )
 
     def run(self) -> list[ExperimentResult]:
         results: list[ExperimentResult] = []
@@ -225,21 +311,28 @@ class ExperimentRunner:
         return counts.most_common(1)[0][0] if counts else "unknown"
 
     def _corpus(self) -> list[Document]:
-        """The legitimate corpus, signed when the experiment configures a signing key."""
-        if not self.config.sign_corpus:
+        """The legitimate corpus, signed by the harness publishers when enabled.
+
+        Documents are dealt round robin across the configured publishers, so a claim that
+        several corpus documents support is normally attested by several distinct keys.
+        """
+        if not self._signing_keys:
             return self.dataset.documents
-        key = self.config.sign_corpus.encode("utf-8")
-        signed: list[Document] = []
-        for doc in self.dataset.documents:
-            provenance = replace(doc.provenance, signature=sign_document(doc.text, key))
-            signed.append(replace(doc, provenance=provenance))
-        return signed
+        names = sorted(self._signing_keys)
+        return [
+            sign_documents([doc], self._signing_keys[names[i % len(names)]])[0]
+            for i, doc in enumerate(self.dataset.documents)
+        ]
 
     def run_attack(
         self, spec: dict[str, Any] | None, baseline: dict[str, bool] | None = None
     ) -> ExperimentResult:
         rng = random.Random(self.config.seed)
-        pipeline = build_pipeline(self.config)
+        pipeline = build_pipeline(
+            self.config,
+            signing_key=self._signing_key,
+            signing_keys=self._signing_keys,
+        )
         ingest_clean = pipeline.ingest(self._corpus())
         qa = self.dataset.qa
 
@@ -265,6 +358,11 @@ class ExperimentRunner:
             poison = attack.generate_poison(
                 list(targets.values()), n_per_target=int(spec.get("n_per_target", 1))
             )
+            if self.config.compromised_publisher:
+                # The adversary is an authorised publisher, so its documents carry a signature
+                # that verifies. Layer 1 cannot exclude them; the question this run asks is
+                # whether anything downstream still refuses to treat them as corroboration.
+                poison = sign_documents(poison, self._signing_keys[PUBLISHER_ZERO])
             ingest_poison = pipeline.ingest(poison)
 
         records: list[QueryRecord] = []
@@ -294,7 +392,15 @@ class ExperimentRunner:
                 "clean": asdict(ingest_clean),
                 "poison": asdict(ingest_poison) if ingest_poison is not None else None,
             },
-            config=self.config.to_dict(),
+            config={
+                **self.config.to_dict(),
+                "resolved_embedder": {
+                    "backend": pipeline.embedder.name,
+                    "model_name": getattr(pipeline.embedder, "model_name", None),
+                    "revision": getattr(pipeline.embedder, "revision", None),
+                    "dimension": pipeline.embedder.dim,
+                },
+            },
         )
 
     @staticmethod

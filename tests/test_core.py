@@ -29,8 +29,9 @@ CORPUS = [
 
 
 def make_pipeline(**kwargs) -> RAGPipeline:
+    top_k = kwargs.pop("top_k", 3)
     return RAGPipeline.from_defaults(
-        embedder=HashingEmbedder(dim=256), llm=MockLLM(), top_k=3, **kwargs
+        embedder=HashingEmbedder(dim=256), llm=MockLLM(), top_k=top_k, **kwargs
     )
 
 
@@ -56,6 +57,16 @@ def test_chunker_windows_and_overlap() -> None:
     assert all(len(c.text.split()) <= 100 for c in chunks)
     assert chunks[1].text.split()[0] == "w80"
     assert chunks[-1].text.split()[-1] == "w299"
+
+
+def test_chunk_provenance_is_copied_from_document() -> None:
+    document = Document(
+        text="trusted evidence",
+        provenance=Provenance(source_id="internal", trust_score=0.8),
+    )
+    chunk = Chunker().chunk(document)[0]
+    document.provenance.trust_score = 1.0
+    assert chunk.provenance.trust_score == 0.8
 
 
 def test_chunker_rejects_invalid_overlap() -> None:
@@ -120,6 +131,36 @@ def test_pipeline_end_to_end() -> None:
     assert 0 < len(response.used) <= 3
     assert response.filtered == []
     assert response.metadata["generator"] == "llm"
+
+
+def test_filtered_and_topk_truncated_candidates_are_counted_separately() -> None:
+    class KeepLastTwo(DefenseLayer):
+        def on_retrieve(self, query, retrieved):
+            return retrieved[1:]
+
+    pipeline = make_pipeline(defenses=[KeepLastTwo()], top_k=1, candidate_multiplier=4)
+    pipeline.ingest([Document(text=text) for text in CORPUS])
+    response = pipeline.query("What is the capital of France?")
+
+    assert response.metadata["num_filtered"] == 1
+    assert response.metadata["num_truncated"] == 2
+    assert [rc.chunk.chunk_id for rc in response.filtered] == [
+        response.retrieved[0].chunk.chunk_id
+    ]
+
+
+def test_empty_retrieval_clears_aggregation_selected_chunk_metadata() -> None:
+    from ragsec.defenses import RobustAggregationLayer
+
+    aggregation = RobustAggregationLayer()
+    pipeline = make_pipeline(defenses=[aggregation])
+    pipeline.ingest([Document(text=text) for text in CORPUS])
+    pipeline.query("What is the capital of France?")
+
+    aggregation.selected_chunk_ids = ("stale:0",)
+    pipeline.store.clear()
+    empty = pipeline.query("Who painted the Mona Lisa?")
+    assert empty.metadata["selected_chunk_ids"] == ()
 
 
 class RecordingDefense(DefenseLayer):

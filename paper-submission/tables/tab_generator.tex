@@ -1,0 +1,21 @@
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{Contribution of generator susceptibility.\label{tab:generator}}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Attack} & \textbf{Undefended, susceptible} & \textbf{Undefended, hardened} & \textbf{Defended, susceptible} & \textbf{Defended, hardened}\\
+\midrule
+PoisonedRAG & 0.99 & 0.99 & 0.00 & 0.00\\
+Trigger backdoor & 0.89 & 0.89 & 0.00 & 0.00\\
+Prompt injection & 0.97 & 0.01 & 0.00 & 0.00\\
+Context flooding & 1.00 & 1.00 & 0.00 & 0.00\\
+Adaptive poisoning & 0.83 & 0.83 & 0.83 & 0.83\\
+\bottomrule
+\end{tabular}
+\par\vspace{3pt}
+\noindent\parbox{\linewidth}{\footnotesize Reported as attributable success rate. A \emph{hardened} generator refuses instructions found in retrieved text but still answers extractively from it, so the residual risk in that column is attributable to retrieval rather than to instruction following.}
+\end{adjustwidth}
+\end{table*}

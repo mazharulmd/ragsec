@@ -1,0 +1,130 @@
+{
+  "format": "RAGSec compact paper artifact v1",
+  "aggregate_result_files": [
+    "backfill.jsonl",
+    "backfill_strict.jsonl",
+    "budget.jsonl",
+    "evasion.jsonl",
+    "generator.jsonl",
+    "main.jsonl",
+    "provenance.jsonl",
+    "threshold.jsonl"
+  ],
+  "study_rows": {
+    "backfill": 324,
+    "backfill_strict": 324,
+    "budget": 324,
+    "evasion": 126,
+    "generator": 216,
+    "main": 378,
+    "provenance": 90,
+    "threshold": 540
+  },
+  "dataset_pins": [
+    {
+      "dataset": "hotpotqa",
+      "source": "hotpotqa/hotpot_qa",
+      "config": "distractor",
+      "revision": "1908d6afbbead072334abe2965f91bd2709910ab",
+      "split": "validation"
+    },
+    {
+      "dataset": "squad",
+      "source": "rajpurkar/squad",
+      "config": null,
+      "revision": "7b6d24c440a36b6815f21b70d25016731768db1f",
+      "split": "validation"
+    },
+    {
+      "dataset": "toy",
+      "source": "toy",
+      "config": null,
+      "revision": null,
+      "split": null
+    }
+  ],
+  "query_outcomes": {
+    "file": "query_outcomes.jsonl.gz",
+    "records": 66780,
+    "cluster_id": "SHA-256 of exact UTF-8 question text",
+    "cluster_order": "Zero-based order after sorting distinct exact question strings within dataset; retains the original bootstrap draw order.",
+    "included_fields": [
+      "record_type",
+      "study",
+      "dataset",
+      "config",
+      "model",
+      "seed",
+      "attack",
+      "attacked",
+      "attack_success",
+      "baseline_correct",
+      "target_token_f1",
+      "question_cluster_id",
+      "question_cluster_order"
+    ],
+    "excluded": [
+      "question text",
+      "gold answer",
+      "attack target text",
+      "generated answer",
+      "latency"
+    ]
+  },
+  "local_model_outputs": [
+    "local_model/summary.json",
+    "local_model/confirmation-printed-summary.txt"
+  ],
+  "run_metadata": {
+    "created_utc": "2026-10-18T08:57:22Z",
+    "command": "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m ragsec.cli suite --studies main evasion budget threshold backfill backfill_strict provenance generator --output-dir results/paper-metric-aligned --no-resume"
+  },
+  "experiment_identity": {
+    "code_fingerprint": "738b861992f07a195f864d142d8f0a85af7ce438ea2f13b9bdb96f9faca91404",
+    "runtime_fingerprint": "d8f11504bc1ef51ec12b50eedc8bf2b3f1a4c5fab5601485eec9f552b235c8af"
+  },
+  "environment": {
+    "python": "3.12.14",
+    "packages": {
+      "datasets": "5.1.0",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "sentence-transformers": "6.1.0",
+      "torch": "2.14.1",
+      "transformers": "5.20.1"
+    },
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "embedding_model_hub_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+    "cuda_available": false
+  },
+  "local_model_metadata": {
+    "dataset": "rajpurkar/squad",
+    "dataset_revision": "7b6d24c440a36b6815f21b70d25016731768db1f",
+    "split": "validation",
+    "queries_per_config": 100,
+    "seed": 0,
+    "code_fingerprint": "a7a013bda678afe650d7121ae2b3538c1199f39fe359dbe3a7c53b264a2db78c",
+    "runtime_fingerprint": "041e6e98d5c679228dda35a7331d9a00d675b377acbd0900349b622f94e57554",
+    "embedding_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+    "models": [
+      {
+        "name": "qwen2.5:7b"
+      },
+      {
+        "name": "llama3.1:8b"
+      }
+    ],
+    "decoding": {
+      "temperature": 0.0,
+      "max_tokens": 128,
+      "cache_enabled": true
+    },
+    "provenance": "Aggregate summary printed from the OCI confirmation.jsonl and supplied by the author.",
+    "interpretation_limits": [
+      "The output is aggregate-only; no query-level paired intervals can be computed.",
+      "The confirmation uses 100 fixed SQuAD questions and one seed per model/configuration.",
+      "Model identity is recorded by the Ollama tag; model digest and server version were not included in the supplied summary.",
+      "Cached decoding makes latency incomparable."
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+\begin{table*}[t]
+\begin{adjustwidth}{-\extralength}{0cm}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{Utility on unattacked traffic.\label{tab:utility}}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{1.55in}>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
+\toprule
+\textbf{Configuration} & \textbf{\shortstack{SQuAD\\acc.}} & \textbf{Abstain} & \textbf{FPR} & \textbf{\shortstack{HotpotQA\\acc.}} & \textbf{Abstain} & \textbf{FPR} & \textbf{\shortstack{Toy corpus\\acc.}} & \textbf{Abstain} & \textbf{FPR}\\
+\midrule
+No defense & 0.62 & 0.01 & n/a & 0.25 & 0.00 & n/a & 1.00 & 0.00 & n/a\\
+L1 source verification & 0.62 & 0.01 & n/a & 0.25 & 0.00 & n/a & 1.00 & 0.00 & n/a\\
+L2 retrieval filtering & 0.61 & 0.02 & 0.01 & 0.26 & 0.00 & 0.01 & 0.90 & 0.07 & 0.00\\
+L3 robust aggregation & 0.52 & 0.31 & n/a & 0.19 & 0.28 & n/a & 1.00 & 0.00 & n/a\\
+L4 monitoring & 0.62 & 0.01 & n/a & 0.25 & 0.00 & n/a & 1.00 & 0.00 & n/a\\
+Full defense & 0.51 & 0.31 & 0.01 & 0.19 & 0.27 & 0.01 & 0.90 & 0.07 & 0.00\\
+Full defense + HMAC-authenticated ingestion & 0.51 & 0.31 & 0.01 & 0.19 & 0.27 & 0.01 & 0.90 & 0.07 & 0.00\\
+\bottomrule
+\end{tabularx}
+\par\vspace{3pt}
+\noindent\parbox{\linewidth}{\footnotesize Accuracy is measured against the undefended pipeline's own ceiling; abstention is the rate at which the aggregation layer declines to answer, and FPR the rate at which the retrieval filter flags legitimate evidence.}
+\end{adjustwidth}
+\end{table*}

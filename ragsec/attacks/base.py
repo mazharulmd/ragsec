@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from ragsec.core.llm import content_tokens
 from ragsec.core.models import Document, Provenance
+from ragsec.core.scoring import answer_matches
 
 
 @dataclass(frozen=True)
@@ -73,7 +74,7 @@ class Attack(ABC):
 
     def is_success(self, target: AttackTarget, answer: str) -> bool:
         """Whether ``answer`` indicates the attack achieved its goal."""
-        return target.target_answer.lower() in answer.lower()
+        return answer_matches(target.target_answer, answer)
 
     def bind_corpus(self, source_id: str) -> None:
         """Tell the attack which source the legitimate corpus is published under.
@@ -96,6 +97,15 @@ class Attack(ABC):
         """Extra evaluation-only metadata attached to the poisoned document."""
         return {}
 
+    def author_for(self, variant: int) -> str | None:
+        """Author recorded on the ``variant``-th poisoned document.
+
+        Constant by default. An adversary that varies it is probing whether the defense
+        counts parties or merely counts metadata, so the hook exists to let an attack do
+        that deliberately rather than by accident.
+        """
+        return self.author
+
     def generate_poison(
         self, targets: Sequence[AttackTarget], n_per_target: int = 1
     ) -> list[Document]:
@@ -111,7 +121,7 @@ class Attack(ABC):
                         provenance=Provenance(
                             source_id=source_id,
                             trust_score=trust_score,
-                            author=self.author,
+                            author=self.author_for(variant),
                         ),
                         metadata={
                             "poison": True,

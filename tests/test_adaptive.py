@@ -163,10 +163,9 @@ def test_allowlist_is_defeated_by_spoofing_but_signatures_are_not() -> None:
 
     legitimate = Document(
         text=CLEAN_CORPUS[0],
-        provenance=Provenance(
-            source_id="curated", trust_score=0.8, signature=sign_document(CLEAN_CORPUS[0], key)
-        ),
+        provenance=Provenance(source_id="curated", trust_score=0.8),
     )
+    legitimate.provenance.signature = sign_document(legitimate, key)
     assert len(signed.on_ingest([legitimate])) == 1
 
 
@@ -280,7 +279,7 @@ def test_conditional_asr_is_none_without_a_baseline() -> None:
 
 
 def test_macro_names_contain_no_digits() -> None:
-    """TeX control words are letters only; a digit silently truncates the name.
+    r"""TeX control words are letters only; a digit silently truncates the name.
 
     ``\casrStaticSquadL3`` parses as ``\casrStaticSquadL`` followed by "3", so a generated
     name carrying a layer index or a budget must spell the number out.

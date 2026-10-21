@@ -1,10 +1,12 @@
 """The experiment suite reported in the paper.
 
-Each study below answers one question and writes one JSONL file under ``results/paper``:
+Each study below answers one question and writes one JSONL file under ``results/paper-pinned``.
+The main and local-model confirmation studies also save per-question outcomes in
+revision-keyed sidecar directories.
 
 ===========================  ==================================================================
 ``main``                     How much does each layer, and the full stack, reduce attack success
-                             on each dataset? Repeated over seeds so that rates carry intervals.
+                             on each dataset? Repeated over seeds to measure seed variability.
 ``evasion``                  Which evasion technique is responsible for the adaptive attacker's
                              success? One technique is disabled per cell.
 ``budget``                   How does attack success scale with the adversary's upload budget?
@@ -26,13 +28,21 @@ and never recomputes a finished cell.
 
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
 import json
+import os
+import shutil
+import sys
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from ragsec.core.embedder import DEFAULT_ST_MODEL_REVISION
+from ragsec.eval.data import HOTPOTQA_REVISION, SQUAD_REVISION
 from ragsec.eval.metrics import rate_with_ci
 from ragsec.eval.runner import CLEAN_RUN, ExperimentConfig, ExperimentRunner
 
@@ -40,13 +50,21 @@ from ragsec.eval.runner import CLEAN_RUN, ExperimentConfig, ExperimentRunner
 # Shared experiment ingredients
 # ---------------------------------------------------------------------------
 
-#: Key held by the ingestion pipeline of the simulated deployment. The adversary does not have
-#: it; every other property of a trusted document (source name, trust score) they can forge.
-SIGNING_KEY = "ragsec-corpus-signing-key-v1"
-
 DATASETS: dict[str, dict[str, Any]] = {
-    "squad": {"name": "hf", "path": "rajpurkar/squad", "limit": 300},
-    "hotpotqa": {"name": "hotpotqa", "limit": 200},
+    "squad": {
+        "name": "hf",
+        "path": "rajpurkar/squad",
+        "split": "validation",
+        "revision": SQUAD_REVISION,
+        "limit": 300,
+    },
+    "hotpotqa": {
+        "name": "hotpotqa",
+        "config": "distractor",
+        "split": "validation",
+        "revision": HOTPOTQA_REVISION,
+        "limit": 200,
+    },
     "toy": {"name": "toy"},
 }
 
@@ -75,6 +93,9 @@ CONFIRMATION_MODELS: list[str] = ["gpt-4o-mini", "gpt-4o"]
 #: the full factorial at API prices.
 CONFIRMATION_QUERIES = 100
 
+#: Confirmation ablations expose each component's clean-utility cost on real generators.
+CONFIRMATION_CONFIGS = ("none", "L1", "L2", "L3", "L4", "full", "full_signed")
+
 #: Where completions are cached, so an interrupted run resumes without paying twice.
 CONFIRMATION_CACHE = "results/paper/llm-cache.sqlite"
 
@@ -99,9 +120,12 @@ CONFIG_LABELS = {
     "L1": "L1 source verification",
     "L2": "L2 retrieval filtering",
     "L3": "L3 robust aggregation",
+    "L3_independent": "L3 + independence discounting",
     "L4": "L4 monitoring",
     "full": "Full defense",
-    "full_signed": "Full defense + signed ingestion",
+    "full_independent": "Full defense + independence discounting",
+    "full_signed": "Full defense + HMAC-authenticated ingestion",
+    "full_signed_independent": "Authenticated ingestion + independence discounting",
 }
 
 EVASION_LABELS = {
@@ -126,24 +150,42 @@ def defense_stack(name: str, dataset: str) -> list[dict[str, Any]]:
     l1 = {"name": "source_verification", "params": l1_params}
     l1_signed = {
         "name": "source_verification",
-        "params": {**l1_params, "hmac_key": SIGNING_KEY, "require_signature": True},
+        "params": {**l1_params, "require_signature": True},
     }
     l2 = {"name": "retrieval_filter", "params": {"mode": "drop"}}
     l3 = {"name": "robust_aggregation", "params": {}}
+    # Layer 3 with corroboration counted over provenance independence classes rather than
+    # document identifiers. This is the proposed mechanism; plain l3 above is its control.
+    l3_independent = {
+        "name": "robust_aggregation",
+        "params": {"independence_discounting": True, "within_class_discount": 0.0},
+    }
     l4 = {"name": "monitoring", "params": {"window_size": 50, "drift_threshold": 0.3}}
     return {
         "none": [],
         "L1": [l1],
         "L2": [l2],
         "L3": [l3],
+        "L3_independent": [l3_independent],
         "L4": [l4],
         "full": [l1, l2, l3, l4],
+        "full_independent": [l1, l2, l3_independent, l4],
         "full_signed": [l1_signed, l2, l3, l4],
+        "full_signed_independent": [l1_signed, l2, l3_independent, l4],
     }[name]
 
 
 #: Layer 1 only enforces signatures when the legitimate corpus is actually signed.
-SIGNED_CONFIGS = {"full_signed"}
+SIGNED_CONFIGS = {"full_signed", "full_signed_independent"}
+
+#: Independent publishers contributing the corpus in the compromised-publisher study. The
+#: measured effect is invariant to this above two, so the value is a presentational default
+#: rather than a tuned parameter; the diversity study varies it explicitly.
+DEFAULT_PUBLISHERS = 8
+
+#: Poisoned documents per target in the diversity study, held at the budget where the
+#: mechanism's effect is largest so that a dependence on diversity would be visible if present.
+DIVERSITY_BUDGET = 5
 
 #: Per-source quota used in the ingestion ladder, as a multiple of the legitimate corpus size.
 #: A source is permitted to grow the corpus it already contributed by 50%; anything much
@@ -173,11 +215,16 @@ def base_config(
     include_clean_run: bool = True,
     follow_injections: bool = True,
     embedder: str = "sentence-transformers",
+    publishers: int = 1,
+    compromised_publisher: bool = False,
 ) -> ExperimentConfig:
+    embedder_spec: dict[str, Any] = {"name": embedder}
+    if embedder in {"sentence-transformers", "st"}:
+        embedder_spec["revision"] = DEFAULT_ST_MODEL_REVISION
     return ExperimentConfig(
         name=f"{dataset}-{config}-s{seed}",
         dataset=DATASETS[dataset],
-        embedder={"name": embedder},
+        embedder=embedder_spec,
         llm={"name": "mock", "follow_injections": follow_injections},
         pipeline={"top_k": top_k, "candidate_multiplier": candidate_multiplier},
         attacks=attacks,
@@ -185,7 +232,9 @@ def base_config(
         seed=seed,
         output_dir=None,
         include_clean_run=include_clean_run,
-        sign_corpus=SIGNING_KEY if config in SIGNED_CONFIGS else None,
+        sign_corpus=config in SIGNED_CONFIGS,
+        publishers=publishers,
+        compromised_publisher=compromised_publisher and config in SIGNED_CONFIGS,
     )
 
 
@@ -219,10 +268,26 @@ def _row(cell: Cell, result: Any, wall_s: float) -> dict[str, Any]:
         r.correct for r in attacked
     ]
     _, acc_low, acc_high = rate_with_ci(acc_flags)
+    dataset_spec = cell.config.dataset
+    embedder_spec = result.config.get("resolved_embedder", cell.config.embedder)
+    dataset_name = dataset_spec.get("name", "toy")
+    dataset_source = dataset_spec.get("path") or (
+        "hotpotqa/hotpot_qa" if dataset_name in {"hotpot", "hotpotqa"} else dataset_name
+    )
     return {
         "study": cell.study,
         **cell.key,
         **cell.extra,
+        "dataset_source": dataset_source,
+        "dataset_config": dataset_spec.get("config"),
+        "dataset_revision": dataset_spec.get("revision"),
+        "dataset_split": dataset_spec.get("split"),
+        "embedding_backend": embedder_spec.get("backend", embedder_spec.get("name")),
+        "embedding_model": embedder_spec.get("model_name"),
+        "embedding_revision": embedder_spec.get("revision"),
+        "config_fingerprint": config_fingerprint(cell.config),
+        "code_fingerprint": code_fingerprint(),
+        "runtime_fingerprint": runtime_fingerprint(),
         "attack": result.attack,
         "n_alerts": len(result.alerts),
         "alert_kinds": sorted({a["kind"] for a in result.alerts}),
@@ -244,15 +309,123 @@ def _row(cell: Cell, result: Any, wall_s: float) -> dict[str, Any]:
     }
 
 
-def run_cell(cell: Cell) -> list[dict[str, Any]]:
+def query_records_path(out_path: Path, identifier: str) -> Path:
+    """Stable sidecar path for a cell's per-question outcomes."""
+    digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
+    return out_path.parent / f"{out_path.stem}_query_records" / f"{digest}.jsonl"
+
+
+def run_cell(cell: Cell, query_path: Path | None = None) -> list[dict[str, Any]]:
     start = time.perf_counter()
     results = ExperimentRunner(cell.config).run()
     wall = time.perf_counter() - start
+    if query_path is not None:
+        dataset_spec = cell.config.dataset
+        dataset_name = dataset_spec.get("name", "toy")
+        dataset_source = dataset_spec.get("path") or (
+            "hotpotqa/hotpot_qa" if dataset_name in {"hotpot", "hotpotqa"} else dataset_name
+        )
+        query_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = query_path.with_suffix(".tmp")
+        with temporary_path.open("w", encoding="utf-8") as handle:
+            for result in results:
+                metadata = {
+                    "record_type": "query_outcome",
+                    "study": cell.study,
+                    **cell.key,
+                    **cell.extra,
+                    "dataset_source": dataset_source,
+                    "dataset_config": dataset_spec.get("config"),
+                    "dataset_revision": dataset_spec.get("revision"),
+                    "dataset_split": dataset_spec.get("split"),
+                    "config_fingerprint": config_fingerprint(cell.config),
+                    "code_fingerprint": code_fingerprint(),
+                    "runtime_fingerprint": runtime_fingerprint(),
+                    "attack": result.attack,
+                    "run_name": result.name,
+                    "_cell": cell_id(cell),
+                    "_cell_label": cell_label(cell),
+                }
+                for record in result.records:
+                    outcome = record.to_dict()
+                    outcome.pop("detections", None)
+                    handle.write(json.dumps({**metadata, **outcome}) + "\n")
+        temporary_path.replace(query_path)
     return [_row(cell, result, wall / max(1, len(results))) for result in results]
 
 
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def config_fingerprint(config: ExperimentConfig) -> str:
+    """Hash the full resolved configuration without exposing credential fields in results."""
+    return hashlib.sha256(_canonical_json(config.to_dict()).encode("utf-8")).hexdigest()
+
+
+@lru_cache(maxsize=1)
+def code_fingerprint() -> str:
+    """Hash package sources and project metadata, including uncommitted working-tree edits."""
+    package_root = Path(__file__).resolve().parents[1]
+    project_root = package_root.parent
+    sources = sorted(
+        path
+        for path in package_root.rglob("*")
+        if path.is_file() and path.suffix in {".py", ".json"}
+    )
+    sources.append(project_root / "pyproject.toml")
+    digest = hashlib.sha256()
+    for source in sources:
+        digest.update(source.relative_to(project_root).as_posix().encode("utf-8"))
+        digest.update(source.read_bytes())
+    return digest.hexdigest()
+
+
+@lru_cache(maxsize=1)
+def runtime_fingerprint() -> str:
+    """Fingerprint the interpreter and packages that affect data, embedding or retrieval."""
+    packages = (
+        "numpy",
+        "datasets",
+        "sentence-transformers",
+        "transformers",
+        "torch",
+        "faiss-cpu",
+    )
+    versions: dict[str, str | None] = {}
+    for package in packages:
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = None
+    payload = {
+        "python": sys.version,
+        "packages": versions,
+        "environment": {
+            name: os.environ.get(name)
+            for name in ("RAGSEC_EMBEDDER", "HF_HUB_OFFLINE", "CUDA_VISIBLE_DEVICES")
+        },
+    }
+    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def cell_label(cell: Cell) -> str:
+    """Stable label for detecting stale versions of a logical experiment cell."""
+    return _canonical_json(
+        {"study": cell.study, "key": cell.key, "extra": cell.extra}
+    )
+
+
 def cell_id(cell: Cell) -> str:
-    return json.dumps({"study": cell.study, **cell.key, **cell.extra}, sort_keys=True)
+    """Identity of a cell's complete configuration, implementation and runtime."""
+    payload = {
+        "label": cell_label(cell),
+        "config": cell.config.to_dict(),
+        "config_fingerprint": config_fingerprint(cell.config),
+        "code_fingerprint": code_fingerprint(),
+        "runtime_fingerprint": runtime_fingerprint(),
+    }
+    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
 
 def run_study(
@@ -261,10 +434,13 @@ def run_study(
     resume: bool = True,
     verbose: bool = True,
 ) -> list[dict[str, Any]]:
-    """Run every cell, appending rows to ``out_path`` (JSONL) as they complete."""
+    """Run cells and append summaries, with per-question records for main and confirmation."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done: set[str] = set()
     rows: list[dict[str, Any]] = []
+    if not resume:
+        out_path.unlink(missing_ok=True)
+        shutil.rmtree(out_path.parent / f"{out_path.stem}_query_records", ignore_errors=True)
     if resume and out_path.exists():
         with out_path.open("r", encoding="utf-8") as handle:
             for line in handle:
@@ -272,16 +448,46 @@ def run_study(
                     row = json.loads(line)
                     rows.append(row)
                     done.add(row["_cell"])
-    with out_path.open("a", encoding="utf-8") as handle:
+    for cell in cells:
+        label = cell_label(cell)
+        identifier = cell_id(cell)
+        stale = any(
+            row.get("_cell") != identifier
+            and (
+                row.get("_cell_label") == label
+                or (
+                    row.get("_cell_label") is None
+                    and row.get("study") == cell.study
+                    and all(row.get(key) == value for key, value in cell.key.items())
+                    and all(row.get(key) == value for key, value in cell.extra.items())
+                )
+            )
+            for row in rows
+        )
+        if stale:
+            raise ValueError(
+                f"Existing results for {cell.study} cell {label} use another config or runtime; "
+                "choose a fresh output directory or rerun with resume=False"
+            )
+    mode = "a" if resume else "w"
+    with out_path.open(mode, encoding="utf-8") as handle:
         for index, cell in enumerate(cells, 1):
             identifier = cell_id(cell)
-            if identifier in done:
+            query_path = (
+                query_records_path(out_path, identifier)
+                if cell.study in {"main", "confirmation", "compromise"}
+                else None
+            )
+            if identifier in done and (query_path is None or query_path.exists()):
                 continue
             started = time.perf_counter()
-            for row in run_cell(cell):
-                row["_cell"] = identifier
-                rows.append(row)
-                handle.write(json.dumps(row) + "\n")
+            cell_rows = run_cell(cell, query_path=query_path)
+            if identifier not in done:
+                for row in cell_rows:
+                    row["_cell"] = identifier
+                    row["_cell_label"] = cell_label(cell)
+                    rows.append(row)
+                    handle.write(json.dumps(row) + "\n")
             handle.flush()
             done.add(identifier)
             if verbose:
@@ -364,6 +570,139 @@ def study_budget(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                                 {"name": "poisoned_rag", "n_per_target": n},
                                 {"name": "adaptive_poison", "n_per_target": n},
                             ],
+                        ),
+                    )
+
+
+def study_compromise(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
+    """Attack success when the adversary holds an authorised publisher's signing key.
+
+    Signed ingestion owes its measured protection to an assumption the threat model states and
+    never tests: that every holder of a valid key is honest. This study drops it. The
+    adversary's documents carry a signature that verifies, so Layer 1 admits them by
+    construction, and what remains is whether corroboration is counted over documents or over
+    independent provenance classes.
+    """
+    for dataset in datasets:
+        for config in ("full_signed", "full_signed_independent"):
+            for n in (1, 2, 3, 5, 8):
+                for seed in seeds:
+                    yield Cell(
+                        study="compromise",
+                        key={
+                            "dataset": dataset,
+                            "config": config,
+                            "n_per_target": n,
+                            "seed": seed,
+                        },
+                        config=base_config(
+                            dataset,
+                            config,
+                            seed,
+                            attacks=[{"name": "adaptive_poison", "n_per_target": n}],
+                            publishers=DEFAULT_PUBLISHERS,
+                            compromised_publisher=True,
+                        ),
+                    )
+
+
+def study_binding(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
+    """Is the principal made of attributes the adversary cannot choose?
+
+    A rule that groups evidence by provenance is only as good as the binding of the attributes
+    it groups on. Three rules are compared under a compromised publisher: counting document
+    identifiers, a principal that includes the uploader-chosen source and author, and a
+    principal made only of the signer identity the server assigns from the verified key.
+
+    Each is run against an adversary that keeps its metadata fixed and against one that varies
+    the author on every document. The signing envelope covers identity, source and text but
+    not the author, so a key holder can vary it and still verify. Varying the source instead
+    is self-defeating, because the ingestion allowlist rejects an unknown label before
+    aggregation sees it.
+    """
+    for dataset in datasets:
+        for rule in ("identifier", "unbound", "bound"):
+            for diversify in (False, True):
+                for seed in seeds:
+                    config = base_config(
+                        dataset,
+                        "full_signed",
+                        seed,
+                        attacks=[{
+                            "name": "adaptive_poison",
+                            "n_per_target": DIVERSITY_BUDGET,
+                            "params": {"diversify_metadata": diversify},
+                        }],
+                        publishers=DEFAULT_PUBLISHERS,
+                        compromised_publisher=True,
+                    )
+                    config.defenses = _binding_stack(dataset, rule)
+                    yield Cell(
+                        study="binding",
+                        key={
+                            "dataset": dataset,
+                            "rule": rule,
+                            "diversify_metadata": diversify,
+                            "seed": seed,
+                        },
+                        config=config,
+                    )
+
+
+def _binding_stack(dataset: str, rule: str) -> list[dict[str, Any]]:
+    """The signed stack with its aggregation rule set to one of the three variants."""
+    layers = [dict(layer) for layer in defense_stack("full_signed", dataset)]
+    for layer in layers:
+        if layer["name"] != "robust_aggregation":
+            continue
+        params = dict(layer.get("params") or {})
+        if rule == "identifier":
+            params["independence_discounting"] = False
+        elif rule == "unbound":
+            params.update(
+                independence_discounting=True,
+                independence_fields=("signer", "source_id", "author"),
+                allow_unbound_fields=True,
+            )
+        elif rule == "bound":
+            params.update(independence_discounting=True,
+                          independence_fields=("signer",))
+        else:
+            raise ValueError(f"Unknown binding rule {rule!r}")
+        layer["params"] = params
+    return layers
+
+
+def study_diversity(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
+    """Does independence discounting depend on honest publishers being diverse?
+
+    The mechanism is justified by independence, so its benefit ought to track how many
+    independent publishers actually contribute the corpus. Varying that count with everything
+    else fixed separates two explanations: honest evidence gaining corroboration across
+    publishers, against the adversary simply losing a volume multiplier inside its own
+    evidence group.
+    """
+    for dataset in datasets:
+        for config in ("full_signed", "full_signed_independent"):
+            for publishers in (1, 2, 4, 8, 16):
+                for seed in seeds:
+                    yield Cell(
+                        study="diversity",
+                        key={
+                            "dataset": dataset,
+                            "config": config,
+                            "publishers": publishers,
+                            "seed": seed,
+                        },
+                        config=base_config(
+                            dataset,
+                            config,
+                            seed,
+                            attacks=[
+                                {"name": "adaptive_poison", "n_per_target": DIVERSITY_BUDGET}
+                            ],
+                            publishers=publishers,
+                            compromised_publisher=True,
                         ),
                     )
 
@@ -477,7 +816,6 @@ def study_provenance(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                 if options.get("allowlist"):
                     params["allowed_sources"] = [source]
                 if options.get("signed"):
-                    params["hmac_key"] = SIGNING_KEY
                     params["require_signature"] = True
                 config = base_config(
                     dataset,
@@ -490,7 +828,7 @@ def study_provenance(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                     ],
                 )
                 config.defenses = [{"name": "source_verification", "params": params}]
-                config.sign_corpus = SIGNING_KEY if options.get("signed") else None
+                config.sign_corpus = bool(options.get("signed"))
                 yield Cell(
                     study="provenance",
                     key={"dataset": dataset, "variant": variant, "seed": seed},
@@ -498,7 +836,11 @@ def study_provenance(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
                 )
 
 
-def study_confirmation(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
+def study_confirmation(
+    datasets: list[str],
+    seeds: list[int],
+    configs: list[str] | None = None,
+) -> Iterator[Cell]:
     """Repeat the headline comparison on real language models.
 
     Every other study uses the deterministic mock generator. That is a deliberate instrument:
@@ -513,7 +855,7 @@ def study_confirmation(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
     real model may resist that, so this is the experiment most able to overturn the paper's
     central claim.
     """
-    configs = ("none", "L2", "full", "full_signed")
+    configs = tuple(CONFIRMATION_CONFIGS if configs is None else configs)
     attacks = [
         {"name": "poisoned_rag", "n_per_target": 1},
         {"name": "prompt_injection", "n_per_target": 1},
@@ -577,6 +919,9 @@ STUDIES = {
     "main": study_main,
     "evasion": study_evasion,
     "budget": study_budget,
+    "compromise": study_compromise,
+    "diversity": study_diversity,
+    "binding": study_binding,
     "threshold": study_threshold,
     "backfill": study_backfill,
     "backfill_strict": study_backfill_strict,
@@ -600,6 +945,7 @@ def run_suite(
     base_url: str | None = None,
     api_key_env: str | None = None,
     queries: int | None = None,
+    confirmation_configs: list[str] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Run the requested studies and return ``{study: rows}``.
 
@@ -612,6 +958,20 @@ def run_suite(
         CONFIRMATION_MODELS = list(models)
     if queries:
         CONFIRMATION_QUERIES = queries
+    if confirmation_configs is not None:
+        # Any configuration the suite can build is selectable here. CONFIRMATION_CONFIGS is
+        # only the default grid, so validating against it would reject a newly added
+        # configuration that defense_stack resolves perfectly well.
+        valid_configs = set(CONFIG_LABELS)
+        unknown_configs = set(confirmation_configs) - valid_configs
+        if unknown_configs:
+            raise ValueError(
+                f"Unknown confirmation configurations {sorted(unknown_configs)}; "
+                f"choose from {sorted(valid_configs)}"
+            )
+        if not confirmation_configs:
+            raise ValueError("confirmation_configs must contain at least one configuration")
+        confirmation_configs = list(dict.fromkeys(confirmation_configs))
     if base_url:
         CONFIRMATION_BASE_URL = base_url
     if api_key_env:
@@ -624,7 +984,10 @@ def run_suite(
     for study in studies:
         if study not in STUDIES:
             raise ValueError(f"Unknown study {study!r}; choose from {sorted(STUDIES)}")
-        cells = list(STUDIES[study](datasets, seeds))
+        if study == "confirmation":
+            cells = list(study_confirmation(datasets, seeds, confirmation_configs))
+        else:
+            cells = list(STUDIES[study](datasets, seeds))
         print(f"\n=== {study}: {len(cells)} cells ===", flush=True)
         out[study] = run_study(cells, directory / f"{study}.jsonl", resume=resume)
     return out

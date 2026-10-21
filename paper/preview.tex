@@ -44,7 +44,8 @@ RAG framework with a four-layer defense---ingestion-time source verification, ca
 retrieval filtering, provenance-weighted robust aggregation and anomaly monitoring---in which
 each layer can be enabled independently, and evaluate it on SQuAD, HotpotQA and a bundled
 corpus with a sentence-transformer retriever across seven configurations, five attacks and
-three seeds. Against four static attacks reproduced from the literature, the layered defense
+three seeds. These corpora contain 30 to 1,999 documents, so the results do not establish
+behavior at enterprise index scale. Against four static attacks reproduced from the literature, the layered defense
 performs as that literature would predict. We then introduce a defense-aware adaptive adversary
 composed of six independently switchable evasion techniques. Against it, the same stack fails:
 the retrieval filter's true-positive rate falls to zero and its AUROC to chance, and robust

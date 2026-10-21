@@ -1,12 +1,14 @@
 """Turn suite results into the paper's tables and figures.
 
-Everything the manuscript reports is produced here from ``results/paper/*.jsonl``, so no number
-in the paper is transcribed by hand. Tables are emitted as LaTeX fragments that the manuscript
-``\\input``s; figures are written as vector PDF (for the submission) alongside PNG (for review).
+Aggregate results, macros, tables, and figures are generated here from the selected results
+directory. The Elsevier manuscript ``\\input``s the generated TeX fragments; figures are
+written as vector PDF for submission alongside PNG previews.
 """
 
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import math
 import re
@@ -16,9 +18,11 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
+from ragsec.eval.metrics import token_f1, wilson_interval
 from ragsec.eval.suite import ATTACK_LABELS, CONFIG_LABELS, EVASION_LABELS
 
 Row = dict[str, Any]
+QUERY_BOOTSTRAP_SEED = 20_261_017
 
 # ---------------------------------------------------------------------------
 # House style
@@ -32,6 +36,7 @@ C_DEFENSE = "#1a6fa3"     # defended configuration
 C_SIGNED = "#117a54"      # cryptographically bound configuration
 C_NEUTRAL = "#6b6b6b"
 C_UTILITY = "#b8770a"     # benign utility
+C_INDEP = "#7d3c98"       # corroboration counted over independence classes
 C_GRID = "#d8d8d8"
 
 CONFIG_COLORS = {
@@ -42,6 +47,9 @@ CONFIG_COLORS = {
     "L4": C_NEUTRAL,
     "full": C_DEFENSE,
     "full_signed": C_SIGNED,
+    "L3_independent": "#a569bd",
+    "full_independent": C_INDEP,
+    "full_signed_independent": C_INDEP,
 }
 
 ATTACK_ORDER = [
@@ -100,6 +108,292 @@ def load_rows(results_dir: Path, study: str) -> list[Row]:
         return [json.loads(line) for line in handle if line.strip()]
 
 
+def load_query_records(results_dir: Path) -> list[Row]:
+    """Load raw sidecars or compact, question-text-free query-outcome artifacts."""
+    public_export = results_dir / "query_outcomes.jsonl.gz"
+    if public_export.exists():
+        records: list[Row] = []
+        with gzip.open(public_export, "rt", encoding="utf-8") as handle:
+            records.extend(
+                row for line in handle if line.strip()
+                if (row := json.loads(line)).get("record_type") == "query_outcome"
+            )
+        return records
+    records: list[Row] = []
+    for records_dir in sorted(results_dir.glob("*_query_records")):
+        for path in sorted(records_dir.glob("*.jsonl")):
+            with path.open("r", encoding="utf-8") as handle:
+                records.extend(
+                    row for line in handle if line.strip()
+                    if (row := json.loads(line)).get("record_type") == "query_outcome"
+                )
+    return records
+
+
+def query_cluster_summary(
+    records: Sequence[Row],
+    keys: Sequence[str] = ("dataset", "config", "attack"),
+    *,
+    n_bootstrap: int = 2_000,
+    confidence: float = 0.95,
+    seed: int = QUERY_BOOTSTRAP_SEED,
+) -> list[Row]:
+    """Estimate ASR and target-token-F1 intervals by resampling question clusters.
+
+    Each sampled cluster contains that question's outcomes across all experiment seeds. This
+    preserves the repeated-query dependence while retaining the pooled query-seed estimand.
+    Conditional ASR uses only outcomes whose same-configuration baseline was correct.
+    """
+    if n_bootstrap < 1:
+        raise ValueError("n_bootstrap must be positive")
+    if not 0 < confidence < 1:
+        raise ValueError("confidence must be between 0 and 1")
+
+    # Per question: raw successes/trials, then baseline-correct successes/trials.
+    grouped: dict[tuple, dict[str, list[float]]] = defaultdict(dict)
+    cluster_orders: dict[tuple, dict[str, int]] = defaultdict(dict)
+    seeds_by_group: dict[tuple, set[Any]] = defaultdict(set)
+    for row in records:
+        if not row.get("attacked") or row.get("attack_success") is None:
+            continue
+        key = tuple(row[field] for field in keys)
+        question = row.get("question_cluster_id") or row.get("question")
+        if not question:
+            continue
+        cluster_id = str(question)
+        counts = grouped[key].setdefault(cluster_id, [0, 0, 0, 0, 0.0, 0, 0.0, 0])
+        if row.get("question_cluster_order") is not None:
+            cluster_orders[key][cluster_id] = int(row["question_cluster_order"])
+        success = int(bool(row["attack_success"]))
+        counts[0] += success
+        counts[1] += 1
+        if row.get("baseline_correct"):
+            counts[2] += success
+            counts[3] += 1
+        target_f1 = row.get("target_token_f1")
+        if (target_f1 is None and row.get("target_answer") is not None
+                and row.get("answer") is not None):
+            target_f1 = token_f1(str(row["target_answer"]), str(row["answer"]))
+        if target_f1 is not None:
+            counts[4] += float(target_f1)
+            counts[5] += 1
+            if row.get("baseline_correct"):
+                counts[6] += float(target_f1)
+                counts[7] += 1
+        if "seed" in row:
+            seeds_by_group[key].add(row["seed"])
+
+    import numpy as np
+
+    alpha = 1.0 - confidence
+    low_q, high_q = alpha / 2.0, 1.0 - alpha / 2.0
+    output: list[Row] = []
+    for key in sorted(grouped, key=lambda value: tuple(map(str, value))):
+        if cluster_orders.get(key):
+            ordered = sorted(
+                grouped[key].items(),
+                key=lambda pair: cluster_orders[key].get(pair[0], len(grouped[key])),
+            )
+        else:
+            ordered = sorted(grouped[key].items())
+        clusters = [counts for _, counts in ordered]
+        counts = np.asarray(clusters, dtype=np.float64)
+        draw_seed = int.from_bytes(
+            hashlib.sha256(json.dumps(key, separators=(",", ":")).encode()).digest()[:8],
+            "big",
+        )
+        rng = np.random.default_rng(seed ^ draw_seed)
+        draws = rng.integers(0, len(clusters), size=(n_bootstrap, len(clusters)))
+
+        def interval(
+            successes: Any,
+            trials: Any,
+            draw_indices: Any = draws,
+        ) -> tuple[float, float, float] | None:
+            total = int(trials.sum())
+            if total == 0:
+                return None
+            estimate = float(successes.sum() / total)
+            sampled_successes = successes[draw_indices].sum(axis=1)
+            sampled_trials = trials[draw_indices].sum(axis=1)
+            valid = sampled_trials > 0
+            if not valid.any():
+                return estimate, estimate, estimate
+            rates = sampled_successes[valid] / sampled_trials[valid]
+            low, high = np.quantile(rates, [low_q, high_q])
+            return estimate, float(low), float(high)
+
+        raw = interval(counts[:, 0], counts[:, 1])
+        conditional = interval(counts[:, 2], counts[:, 3])
+        target_f1 = interval(counts[:, 4], counts[:, 5])
+        conditional_target_f1 = interval(counts[:, 6], counts[:, 7])
+        output.append({
+            **dict(zip(keys, key, strict=True)),
+            "n_query_clusters": len(clusters),
+            "n_seeds": len(seeds_by_group[key]),
+            "n_query_seed_trials": int(counts[:, 1].sum()),
+            "asr": raw[0] if raw else None,
+            "asr_ci_low": raw[1] if raw else None,
+            "asr_ci_high": raw[2] if raw else None,
+            "n_baseline_correct": int(counts[:, 3].sum()),
+            "conditional_asr": conditional[0] if conditional else None,
+            "conditional_asr_ci_low": conditional[1] if conditional else None,
+            "conditional_asr_ci_high": conditional[2] if conditional else None,
+            "target_token_f1": target_f1[0] if target_f1 else None,
+            "target_token_f1_ci_low": target_f1[1] if target_f1 else None,
+            "target_token_f1_ci_high": target_f1[2] if target_f1 else None,
+            "conditional_target_token_f1": (
+                conditional_target_f1[0] if conditional_target_f1 else None
+            ),
+            "conditional_target_token_f1_ci_low": (
+                conditional_target_f1[1] if conditional_target_f1 else None
+            ),
+            "conditional_target_token_f1_ci_high": (
+                conditional_target_f1[2] if conditional_target_f1 else None
+            ),
+        })
+    return output
+
+
+def paired_confirmation_summary(
+    records: Sequence[Row],
+    *,
+    n_bootstrap: int = 2_000,
+    confidence: float = 0.95,
+    seed: int = QUERY_BOOTSTRAP_SEED,
+    baseline: str = "none",
+    treatment: str = "full",
+) -> list[Row]:
+    """Bootstrap paired treatment-minus-baseline ASR differences by question cluster.
+
+    Query and seed pairs are retained together across the two configurations. This estimates
+    the uncertainty in the within-sample difference conditional on the evaluated seeds.
+
+    Pairing matters most when the two configurations share their upstream behaviour. Two
+    aggregation rules over the same retrieved passages issue identical generation prompts and
+    differ only in how the resulting answers are weighted, so their per-question outcomes are
+    strongly correlated and an unpaired interval mostly measures variance the comparison does
+    not depend on.
+    """
+    if n_bootstrap < 1:
+        raise ValueError("n_bootstrap must be positive")
+    if not 0 < confidence < 1:
+        raise ValueError("confidence must be between 0 and 1")
+
+    grouped: dict[tuple[str, str, str], dict[str, dict[tuple[str, Any], Row]]] = defaultdict(
+        lambda: {baseline: {}, treatment: {}}
+    )
+    for row in records:
+        if row.get("study") != "confirmation" or not row.get("attacked"):
+            continue
+        if row.get("attack_success") is None:
+            continue
+        config = str(row.get("config", ""))
+        if config not in {baseline, treatment}:
+            continue
+        question_id = row.get("question_cluster_id") or row.get("question")
+        if not question_id:
+            continue
+        key = (
+            str(row.get("dataset", "")),
+            str(row.get("model", "")),
+            str(row.get("attack", "")),
+        )
+        trial = (str(question_id), row.get("seed", 0))
+        grouped[key][config][trial] = row
+
+    import numpy as np
+
+    alpha = 1.0 - confidence
+    output: list[Row] = []
+    for key in sorted(grouped):
+        none_rows = grouped[key][baseline]
+        full_rows = grouped[key][treatment]
+        paired_keys = sorted(
+            set(none_rows) & set(full_rows), key=lambda item: (item[0], str(item[1]))
+        )
+        if not paired_keys:
+            continue
+        by_cluster: dict[str, list[tuple[Row, Row]]] = defaultdict(list)
+        for trial in paired_keys:
+            by_cluster[trial[0]].append((none_rows[trial], full_rows[trial]))
+        clusters = sorted(by_cluster)
+
+        def differences(pairs: Sequence[tuple[Row, Row]]) -> tuple[float, float | None]:
+            none_raw = sum(bool(none.get("attack_success")) for none, _full in pairs)
+            full_raw = sum(bool(full.get("attack_success")) for _none, full in pairs)
+            raw_delta = (full_raw - none_raw) / len(pairs)
+            none_baseline = [none for none, _full in pairs if none.get("baseline_correct")]
+            full_baseline = [full for _none, full in pairs if full.get("baseline_correct")]
+            if not none_baseline or not full_baseline:
+                return raw_delta, None
+            none_conditional = sum(bool(row.get("attack_success")) for row in none_baseline)
+            full_conditional = sum(bool(row.get("attack_success")) for row in full_baseline)
+            cond_delta = (
+                full_conditional / len(full_baseline) - none_conditional / len(none_baseline)
+            )
+            return raw_delta, cond_delta
+
+        all_pairs = [pair for cluster in clusters for pair in by_cluster[cluster]]
+        raw_delta, cond_delta = differences(all_pairs)
+        # Discordant pairs say plainly what the difference is made of: how often the treatment
+        # prevented an attack the baseline allowed, and how often it caused one the baseline
+        # prevented. A small mean difference built from zero regressions means something
+        # different from the same difference built from offsetting changes.
+        baseline_only = sum(
+            1
+            for base, treat in all_pairs
+            if base.get("attack_success") and not treat.get("attack_success")
+        )
+        treatment_only = sum(
+            1
+            for base, treat in all_pairs
+            if treat.get("attack_success") and not base.get("attack_success")
+        )
+        # Fold the comparison into the draw seed: two comparisons over the same model and
+        # attack would otherwise share one bootstrap stream.
+        draw_seed = int.from_bytes(
+            hashlib.sha256(
+                json.dumps([*key, baseline, treatment], separators=(",", ":")).encode()
+            ).digest()[:8],
+            "big",
+        )
+        rng = np.random.default_rng(seed ^ draw_seed)
+        draws = rng.integers(0, len(clusters), size=(n_bootstrap, len(clusters)))
+        raw_draws: list[float] = []
+        conditional_draws: list[float] = []
+        for draw in draws:
+            sampled = [pair for index in draw for pair in by_cluster[clusters[int(index)]]]
+            raw_value, conditional_value = differences(sampled)
+            raw_draws.append(raw_value)
+            if conditional_value is not None:
+                conditional_draws.append(conditional_value)
+        raw_low, raw_high = np.quantile(raw_draws, [alpha / 2.0, 1.0 - alpha / 2.0])
+        conditional_ci = (
+            np.quantile(conditional_draws, [alpha / 2.0, 1.0 - alpha / 2.0]).tolist()
+            if conditional_draws and cond_delta is not None
+            else [None, None]
+        )
+        output.append({
+            "dataset": key[0],
+            "model": key[1],
+            "attack": key[2],
+            "comparison": f"{treatment}-minus-{baseline}",
+            "n_paired_questions": len(clusters),
+            "n_paired_query_seed_trials": len(all_pairs),
+            "n_prevented_by_treatment": baseline_only,
+            "n_caused_by_treatment": treatment_only,
+            "n_seeds": len({trial[1] for trial in paired_keys}),
+            "raw_asr_difference": raw_delta,
+            "raw_asr_difference_ci_low": float(raw_low),
+            "raw_asr_difference_ci_high": float(raw_high),
+            "attributable_asr_difference": cond_delta,
+            "attributable_asr_difference_ci_low": conditional_ci[0],
+            "attributable_asr_difference_ci_high": conditional_ci[1],
+        })
+    return output
+
+
 def _finite(values: Iterable[Any]) -> list[float]:
     out = []
     for v in values:
@@ -142,35 +436,45 @@ def agg_spread(rows: Sequence[Row], keys: Sequence[str], field: str) -> dict[tup
     return {k: (max(v) - min(v)) / 2.0 for k, v in buckets.items() if v}
 
 
-def pooled_ci(
+def seed_summary(
     rows: Sequence[Row],
     keys: Sequence[str],
     rate_field: str = "attack_success_rate",
     n_field: str = "n_attacked",
 ) -> dict[tuple, tuple[float, float, float]]:
-    """Pool attacked queries across seeds and return ``(rate, lo, hi)`` per key.
+    """Return pooled rate and minimum/maximum per-seed rates for each key.
 
-    Pooling is the right operation here: seeds differ only in which decoy answers are drawn,
-    so the per-seed runs are exchangeable Bernoulli samples of the same quantity. Pass
-    ``rate_field="conditional_asr"`` with ``n_field="n_baseline_correct"`` to pool the
-    attack-attributable rate instead.
+    Rows retain only seed-level aggregates, not per-question outcomes. We therefore summarize
+    between-seed variability rather than treating repeated questions as independent Bernoulli
+    trials. The point estimate pools numerator and denominator across seeds; when multiple
+    attack rows share a seed and key, ``n_field`` weights their rates within that seed. The
+    endpoints are the observed seed range, not a confidence interval. Pass
+    ``rate_field="conditional_asr"`` with ``n_field="n_baseline_correct"`` for
+    attack-attributable rates.
     """
-    from ragsec.eval.metrics import wilson_interval
-
-    successes: dict[tuple, int] = defaultdict(int)
-    totals: dict[tuple, int] = defaultdict(int)
+    by_seed: dict[tuple[tuple, Any], list[float]] = defaultdict(lambda: [0.0, 0.0])
     for row in rows:
-        asr = row.get(rate_field)
-        n = row.get(n_field) or 0
-        if asr is None or not n:
+        rate = row.get(rate_field)
+        count = row.get(n_field) or 0
+        if rate is None or not count:
             continue
         key = tuple(row[k] for k in keys)
-        successes[key] += round(float(asr) * n)
-        totals[key] += int(n)
+        seed_key = (key, row.get("seed"))
+        by_seed[seed_key][0] += float(rate) * int(count)
+        by_seed[seed_key][1] += int(count)
+    per_key: dict[tuple, list[tuple[float, float]]] = defaultdict(list)
+    for (key, _seed), (weighted_sum, total) in by_seed.items():
+        if total:
+            per_key[key].append((weighted_sum, total))
     out = {}
-    for key, total in totals.items():
-        lo, hi = wilson_interval(successes[key], total)
-        out[key] = (successes[key] / total, lo, hi)
+    for key, seed_counts in per_key.items():
+        rates = [successes / total for successes, total in seed_counts]
+        out[key] = (
+            sum(successes for successes, _total in seed_counts)
+            / sum(total for _successes, total in seed_counts),
+            min(rates),
+            max(rates),
+        )
     return out
 
 
@@ -222,20 +526,38 @@ def latex_table(
 ) -> str:
     """Render a booktabs table.
 
-    ``wide`` wraps the table in MDPI's ``adjustwidth`` so that a many-column table may use the
-    margins instead of overflowing the text block; it defaults to on above seven columns, which
-    is roughly where a numeric table stops fitting the journal's measure.
+    Wide tables use a two-column float in the Elsevier layout; ``adjustwidth`` is retained with
+    a zero-width allowance so the same fragment remains inside the page measure. Tables with
+    more than four columns default to the wide layout.
     """
+    # Elsevier asks for a brief caption title with the description separate. Keep the opening
+    # sentence as the caption and move the rest below the table, where it does not compete
+    # with the table for the reader's eye. The length guard avoids splitting on an
+    # abbreviation's period.
+    head, separator, tail = caption.partition(". ")
+    last_word = head.split()[-1] if head.split() else ""
+    abbreviation = len(last_word) <= 3 and (last_word[:1].isupper() or "." in last_word)
+    if separator and len(head.split()) >= 2 and not abbreviation:
+        caption = head + "."
+        note = f"{tail} {note}".strip() if note else tail
+
     spec = column_spec or ("l" + "X" * (len(header) - 1))
     env = "tabularx" if "X" in spec else "tabular"
     width = "{\\textwidth}" if env == "tabularx" else ""
     if wide is None:
-        wide = len(header) > 7
-    lines = ["\\begin{table}[H]"]
+        wide = len(header) > 4
+    float_env = "table*" if wide else "table"
+    placement = "t" if wide else "H"
+    lines = [f"\\begin{{{float_env}}}[{placement}]"]
     if wide:
-        lines += ["\\begin{adjustwidth}{-\\extralength}{0cm}", "\\footnotesize"]
+        lines += [
+            "\\begin{adjustwidth}{-\\extralength}{0cm}",
+            "\\centering",
+            "\\footnotesize",
+            "\\setlength{\\tabcolsep}{3pt}",
+        ]
     else:
-        lines.append("\\small")
+        lines += ["\\centering", "\\small"]
     lines += [
         f"\\caption{{{caption}\\label{{{label}}}}}",
         f"\\begin{{{env}}}{width}{{{spec}}}",
@@ -246,10 +568,14 @@ def latex_table(
     lines += [" & ".join(cells) + "\\\\" for cells in body]
     lines += ["\\bottomrule", f"\\end{{{env}}}"]
     if note:
-        lines.append(f"\\noindent\\footnotesize {note}")
+        # A tabular is a box, so a note written after it on the next source line sets
+        # alongside it rather than below. Break the paragraph, then give the note its own
+        # full-width box so it reads as a footnote to the table.
+        lines.append("\\par\\vspace{3pt}")
+        lines.append(f"\\noindent\\parbox{{\\linewidth}}{{\\footnotesize {note}}}")
     if wide:
         lines.append("\\end{adjustwidth}")
-    lines.append("\\end{table}")
+    lines.append(f"\\end{{{float_env}}}")
     return "\n".join(lines) + "\n"
 
 
@@ -287,14 +613,17 @@ def fig_architecture(out_dir: Path) -> Path:
     ax.grid(False)
 
     LAYER_FACE, PLAIN_FACE = "#e6f0f8", "#f3f3f3"
+    BOX_EDGE = "black"
 
-    def box(x, y, w, h, title, face, edge, caption="", weight="normal", tc="black",
-            fontsize=7.0):
+    def box(x, y, w, h, title, face, edge=BOX_EDGE, caption="", weight="normal",
+            tc="black", fontsize=7.0):
+        # One border colour for every box, so the fill alone carries the grouping and the
+        # diagram still reads when printed in grey.
         ax.add_patch(
             FancyBboxPatch(
                 (x, y), w, h,
                 boxstyle="round,pad=0.45,rounding_size=1.0",
-                facecolor=face, edgecolor=edge, linewidth=1.0,
+                facecolor=face, edgecolor=BOX_EDGE, linewidth=0.9,
             )
         )
         ax.text(x + w / 2, y + h / 2, title, ha="center", va="center",
@@ -310,10 +639,11 @@ def fig_architecture(out_dir: Path) -> Path:
         )
 
     # --- adversary band -----------------------------------------------------
-    box(1, 49, 33, 8,
-        "Adversary\nwrites to the knowledge base; cannot modify\n"
-        "model weights or the ingestion signing key",
-        "#fbeceb", C_ATTACK, fontsize=6.6, tc=C_ATTACK)
+    # Three short lines rather than two long ones: at this width the box holds roughly forty
+    # characters per line, and the longer phrasing overflowed its border.
+    box(1, 49, 35, 8,
+        "Adversary\nwrites to the knowledge base\ncannot alter the model or the keys",
+        "#fbeceb", C_ATTACK, fontsize=6.3, tc=C_ATTACK)
     ax.text(38.5, 56.6, "Attack surface", fontsize=7.3, weight="bold", color=C_ATTACK,
             va="top")
     for i, text in enumerate(["A1  targeted poisoning", "A2  trigger backdoor",
@@ -327,7 +657,7 @@ def fig_architecture(out_dir: Path) -> Path:
     ax.text(0, 44.5, "Ingestion", fontsize=6.6, color=C_NEUTRAL, weight="bold",
             va="bottom")
     box(1, 34, 16, 8, "Document\nsources", PLAIN_FACE, C_NEUTRAL,
-        "provenance:\nsource, trust, signature")
+        "provenance:\nsource, trust, MAC tag")
     box(22, 34, 17, 8, "L1  Source\nverification", LAYER_FACE, C_DEFENSE,
         "allowlist $\\cdot$ trust $\\cdot$ HMAC\ndedupe $\\cdot$ quota", weight="bold")
     box(44, 34, 15, 8, "Chunk and\nembed", PLAIN_FACE, C_NEUTRAL)
@@ -353,19 +683,20 @@ def fig_architecture(out_dir: Path) -> Path:
     arrow(71.5, 34, 71.5, 25.5, C_DEFENSE)
     arrow(71.5, 25.5, 28.5, 25.5, C_DEFENSE)
     arrow(28.5, 25.5, 28.5, 20, C_DEFENSE)
-    ax.text(71, 26.5, "top-$mk$ candidate set (over-retrieval enables backfill)",
+    ax.text(68.5, 26.6, "top-$mk$ candidate set (over-retrieval enables backfill)",
             ha="right", fontsize=6.3, color=C_DEFENSE, style="italic")
 
     # --- monitoring ---------------------------------------------------------
     box(60, 0.5, 39, 5.5, "L4  Anomaly monitoring", "#e8f5ef", C_SIGNED,
         weight="bold", fontsize=6.8)
-    ax.text(79.5, 3.25 - 2.0, "", ha="center")
     ax.text(79.5, -1.4, "retrieval drift $\\cdot$ ranking shift $\\cdot$ canary queries",
             ha="center", va="top", fontsize=5.8, color=C_NEUTRAL, style="italic")
     arrow(91, 12, 91, 6, C_SIGNED)
     arrow(60, 3.25, 30, 3.25, C_SIGNED, ls=(0, (4, 2)))
-    ax.text(45, 4.5, "alerts to operators (detective, not preventive)",
-            ha="center", fontsize=6.2, color=C_SIGNED, style="italic")
+    # Anchored at the arrow's own tail and set leftwards, so the label cannot reach the box
+    # however long it gets.
+    ax.text(58, 4.6, "alerts to operators (detective, not preventive)",
+            ha="right", fontsize=6.2, color=C_SIGNED, style="italic")
 
     return _save(fig, out_dir, "fig1_architecture")
 
@@ -376,7 +707,7 @@ def fig_asr_heatmap(rows: list[Row], out_dir: Path) -> Path:
     import numpy as np
 
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "config", "attack"])
+    values = seed_summary(rows, ["dataset", "config", "attack"])
     fig, axes = plt.subplots(1, len(datasets), figsize=(7.1, 2.9), squeeze=False)
     for ax, dataset in zip(axes[0], datasets, strict=False):
         grid = np.full((len(CONFIG_ORDER), len(ATTACK_ORDER)), np.nan)
@@ -387,8 +718,11 @@ def fig_asr_heatmap(rows: list[Row], out_dir: Path) -> Path:
                     grid[i, j] = hit[0]
         im = ax.imshow(grid, vmin=0, vmax=1, cmap="RdYlGn_r", aspect="auto")
         ax.set_xticks(range(len(ATTACK_ORDER)))
-        ax.set_xticklabels([ATTACK_LABELS[a].replace(" ", "\n") for a in ATTACK_ORDER],
-                           fontsize=6.2)
+        # Three panels share the text width, leaving under half an inch per column, so the
+        # labels are rotated rather than wrapped: stacked words collided at this size.
+        ax.set_xticklabels([ATTACK_LABELS[a] for a in ATTACK_ORDER],
+                           fontsize=6.0, rotation=30, ha="right",
+                           rotation_mode="anchor")
         ax.set_yticks(range(len(CONFIG_ORDER)))
         ax.set_yticklabels(
             [CONFIG_LABELS[c] for c in CONFIG_ORDER] if dataset == datasets[0] else [],
@@ -408,12 +742,12 @@ def fig_asr_heatmap(rows: list[Row], out_dir: Path) -> Path:
 
 
 def fig_asr_bars(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
-    """Headline comparison with Wilson intervals: undefended, defended, signed ingestion."""
+    """Headline comparison with observed min--max seed ranges."""
     import matplotlib.pyplot as plt
     import numpy as np
 
     subset = [r for r in rows if r["dataset"] == dataset]
-    values = pooled_ci(subset, ["config", "attack"])
+    values = seed_summary(subset, ["config", "attack"])
     configs = ["none", "L2", "L3", "full", "full_signed"]
     width = 0.16
     x = np.arange(len(ATTACK_ORDER))
@@ -444,7 +778,7 @@ def fig_evasion(rows: list[Row], out_dir: Path) -> Path:
     import numpy as np
 
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "config", "disabled"])
+    values = seed_summary(rows, ["dataset", "config", "disabled"])
     order = ["none", *EVASION_LABELS]
     labels = ["All techniques enabled"] + [
         f"without: {EVASION_LABELS[k].lower()}" for k in EVASION_LABELS
@@ -480,7 +814,7 @@ def fig_budget(rows: list[Row], out_dir: Path) -> Path:
     import matplotlib.pyplot as plt
 
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "config", "attack", "n_per_target"],
+    values = seed_summary(rows, ["dataset", "config", "attack", "n_per_target"],
                        "conditional_asr", "n_baseline_correct")
     budgets = sorted({r["n_per_target"] for r in rows})
     series = [
@@ -578,9 +912,9 @@ def fig_threshold(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
          "Filter FPR, clean traffic", C_ATTACK, "s", "-"),
         (agg(clean_rows, ["threshold"], "clean_accuracy"),
          "Clean accuracy", C_UTILITY, "^", "-"),
-        (pooled_ci(static_rows, ["threshold"], "conditional_asr", "n_baseline_correct"),
+        (seed_summary(static_rows, ["threshold"], "conditional_asr", "n_baseline_correct"),
          "Attributable ASR, static", C_DEFENSE, "D", "-"),
-        (pooled_ci(adaptive_rows, ["threshold"], "conditional_asr", "n_baseline_correct"),
+        (seed_summary(adaptive_rows, ["threshold"], "conditional_asr", "n_baseline_correct"),
          "Attributable ASR, adaptive", "#111111", "X", (0, (4, 2))),
     ]
 
@@ -626,7 +960,7 @@ def fig_backfill(
         subset = [r for r in source if r["dataset"] == dataset]
         multipliers = sorted({r["candidate_multiplier"] for r in subset})
         clean_rows = [r for r in subset if r["attack"] == "clean"]
-        asr = pooled_ci([r for r in subset if r["attack"] in static],
+        asr = seed_summary([r for r in subset if r["attack"] in static],
                         ["candidate_multiplier"], "conditional_asr", "n_baseline_correct")
         acc = agg(clean_rows, ["candidate_multiplier"], "clean_accuracy")
         abstain = agg(clean_rows, ["candidate_multiplier"], "abstention_rate")
@@ -673,10 +1007,9 @@ def fig_provenance(rows: list[Row], out_dir: Path) -> Path:
     import numpy as np
 
     order = ["open", "trust_only", "allowlist", "quota", "signed"]
-    labels = ["None", "Trust\nthreshold", "Source\nallowlist", "Allowlist\n+ quota",
-              "HMAC\nsignature"]
+    labels = ["None", "Trust", "Allowlist", "Quota", "HMAC"]
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "variant", "attack"])
+    values = seed_summary(rows, ["dataset", "variant", "attack"])
     x = np.arange(len(order))
     fig, axes = plt.subplots(1, len(datasets), figsize=(7.1, 2.5), squeeze=False, sharey=True)
     for ax, dataset in zip(axes[0], datasets, strict=False):
@@ -702,12 +1035,13 @@ def fig_provenance(rows: list[Row], out_dir: Path) -> Path:
                         yerr=[[e[0] for e in errs], [e[1] for e in errs]],
                         fmt="none", ecolor="#333333", elinewidth=0.6, capsize=1.4)
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, fontsize=6.6)
+        ax.set_xticklabels(labels, fontsize=6.0, rotation=20, ha="right",
+                           rotation_mode="anchor")
         ax.set_ylim(0, 1.08)
         ax.set_title(DATASET_LABELS[dataset], fontsize=8.5)
     axes[0][0].set_ylabel("Attack success rate")
     axes[0][0].legend(fontsize=6.8, loc="upper right")
-    return _save(fig, out_dir, "fig9_provenance")
+    return _save(fig, out_dir, "fig3_provenance")
 
 
 def fig_latency(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
@@ -729,7 +1063,9 @@ def fig_latency(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
                label=label, edgecolor="white", linewidth=0.5)
         bottom += heights
     ax.set_xticks(range(len(configs)))
-    ax.set_xticklabels([CONFIG_LABELS[c].replace(" ", "\n", 1) for c in configs], fontsize=6.2)
+    # Seven configuration names across one column collide when stacked, so rotate them.
+    ax.set_xticklabels([CONFIG_LABELS[c] for c in configs], fontsize=6.0,
+                       rotation=30, ha="right", rotation_mode="anchor")
     ax.set_ylabel("Mean latency per query (ms)")
     ax.legend(fontsize=6.8)
     ax.set_title(f"{DATASET_LABELS[dataset]}: latency decomposition", fontsize=8.5)
@@ -758,7 +1094,7 @@ def fig_risk_coverage(rows: list[Row], out_dir: Path) -> Path:
             (static, "o", "vs. static attacks", "none"),
             (["adaptive_poison"], "X", "vs. adaptive attack", "#111111"),
         ):
-            pooled = pooled_ci(
+            pooled = seed_summary(
                 [r for r in rows if r["dataset"] == dataset and r["attack"] in attack_set],
                 ["config"], "conditional_asr", "n_baseline_correct",
             )
@@ -810,7 +1146,7 @@ def fig_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
     subset = [r for r in rows if r["dataset"] == dataset]
     # Attributable rates, so that the suppression attack is not credited with the pipeline's
     # own errors -- the comparison here is specifically about attack effectiveness.
-    values = pooled_ci(subset, ["config", "follow_injections", "attack"], "conditional_asr",
+    values = seed_summary(subset, ["config", "follow_injections", "attack"], "conditional_asr",
                        "n_baseline_correct")
     x = np.arange(len(ATTACK_ORDER))
     fig, ax = plt.subplots(figsize=(4.6, 2.7))
@@ -826,7 +1162,8 @@ def fig_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
         ax.bar(x + (i - 1.5) * width, heights, width, color=color, hatch=hatch,
                label=label, edgecolor="white", linewidth=0.4)
     ax.set_xticks(x)
-    ax.set_xticklabels([ATTACK_LABELS[a].replace(" ", "\n") for a in ATTACK_ORDER], fontsize=6.4)
+    ax.set_xticklabels([ATTACK_LABELS[a] for a in ATTACK_ORDER], fontsize=6.0,
+                       rotation=30, ha="right", rotation_mode="anchor")
     ax.set_ylabel("Attributable attack success rate")
     ax.set_ylim(0, 1.06)
     handles, labels = ax.get_legend_handles_labels()
@@ -873,8 +1210,8 @@ def tab_datasets(out_dir: Path) -> Path:
 
 def tab_main(rows: list[Row], out_dir: Path) -> Path:
     """ASR for every configuration and attack, raw and attack-attributable."""
-    values = pooled_ci(rows, ["dataset", "config", "attack"])
-    attributable = pooled_ci(rows, ["dataset", "config", "attack"], "conditional_asr",
+    values = seed_summary(rows, ["dataset", "config", "attack"])
+    attributable = seed_summary(rows, ["dataset", "config", "attack"], "conditional_asr",
                              "n_baseline_correct")
     clean = agg([r for r in rows if r["attack"] == "clean"], ["dataset", "config"],
                 "clean_accuracy")
@@ -883,7 +1220,8 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
     for dataset in datasets:
         body.append([f"\\multicolumn{{7}}{{l}}{{\\textit{{{DATASET_LABELS[dataset]}}}}}"])
         for config in CONFIG_ORDER:
-            cells = [f"\\quad {CONFIG_LABELS[config]}"]
+            label = "Full + HMAC auth." if config == "full_signed" else CONFIG_LABELS[config]
+            cells = [label]
             for attack in ATTACK_ORDER:
                 hit = values.get((dataset, config, attack))
                 cond = attributable.get((dataset, config, attack))
@@ -897,18 +1235,26 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
     return _write(
         out_dir / "tab_main.tex",
         latex_table(
-            "Attack success rate by defense configuration, pooled over attacked queries from "
-            "all seeds. Each cell reads \\emph{raw} (\\emph{attack-attributable}), the latter "
+            "Attack success by defense configuration. Pooled over query-seed trials. "
+            "Each cell reads \\emph{raw} (\\emph{attack-attributable}), the latter "
             "restricted to queries the same configuration answered correctly with no adversary "
             "present. The two diverge only for the suppression attack, whose raw rate absorbs "
             "the pipeline's own error rate; this is most visible on HotpotQA, where multi-hop "
-            "questions depress clean accuracy. Confidence intervals are shown in "
-            "Figure~\\ref{fig:bars}. The last column is clean accuracy on the unattacked "
-            "corpus, i.e.\\ the utility cost of the configuration.",
+            "questions depress clean accuracy. The last column is clean accuracy on the "
+            "unattacked corpus, i.e.\\ the utility cost of the configuration.",
             "tab:main",
-            ["Configuration", *[ATTACK_LABELS[a] for a in ATTACK_ORDER], "Clean acc."],
+            [
+                "Configuration",
+                r"\shortstack{Poisoned\\RAG}",
+                r"\shortstack{Trigger\\backdoor}",
+                r"\shortstack{Prompt\\injection}",
+                r"\shortstack{Context\\flooding}",
+                r"\shortstack{Adaptive\\poisoning}",
+                r"\shortstack{Clean\\accuracy}",
+            ],
             body,
-            column_spec="l" + "c" * len(ATTACK_ORDER) + "c",
+            column_spec=(r">{\raggedright\arraybackslash}p{1.5in}"
+                         + r">{\centering\arraybackslash}X" * (len(ATTACK_ORDER) + 1)),
         ),
     )
 
@@ -916,8 +1262,8 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
 def tab_full(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
     """Detailed behaviour of the two strongest configurations."""
     subset = [r for r in rows if r["dataset"] == dataset]
-    values = pooled_ci(subset, ["config", "attack"])
-    conditional = pooled_ci(
+    values = seed_summary(subset, ["config", "attack"])
+    conditional = seed_summary(
         subset, ["config", "attack"], "conditional_asr", "n_baseline_correct"
     )
     body: list[list[str]] = []
@@ -965,7 +1311,7 @@ def tab_full(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
 def tab_evasion(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
     """Which evasion technique the adaptive attacker actually needs."""
     subset = [r for r in rows if r["dataset"] == dataset]
-    values = pooled_ci(subset, ["config", "disabled"])
+    values = seed_summary(subset, ["config", "disabled"])
     tpr = agg(subset, ["config", "disabled"], "filter_tpr")
     retrieved = agg(subset, ["config", "disabled"], "poison_retrieval_rate")
     accuracy = agg(subset, ["config", "disabled"], "attacked_accuracy")
@@ -986,13 +1332,14 @@ def tab_evasion(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
     return _write(
         out_dir / "tab_evasion.tex",
         latex_table(
-            "Leave-one-out ablation of the adaptive attacker's evasion techniques on "
+            "Leave-one-out ablation of evasion techniques. Measured on "
             f"{DATASET_LABELS[dataset]} ($3$ poisoned documents per target). Each row disables "
             "one technique and leaves the other five in place, so a drop in ASR identifies a "
-            "technique the defense depends on the adversary \\emph{not} using.",
+            "technique the defense depends on the adversary \\emph{not} using. Bracketed "
+            "values give the observed min-to-max range across seeds, not a confidence interval.",
             "tab:evasion",
             ["Adaptive attacker variant", "ASR (full)", "Poison retr.", "Filter TPR",
-             "Accuracy", "ASR (signed)"],
+             "Accuracy", "ASR (HMAC)"],
             body,
             column_spec="lrrrrr",
         ),
@@ -1007,10 +1354,10 @@ def tab_provenance(rows: list[Row], out_dir: Path) -> Path:
         "trust_only": "Trust threshold ($\\theta_{\\mathrm{trust}}=0.6$)",
         "allowlist": "Source allowlist $+$ trust threshold",
         "quota": "Allowlist $+$ per-source quota",
-        "signed": "HMAC-signed ingestion (allowlist $+$ signature)",
+        "signed": "HMAC-authenticated ingestion (allowlist $+$ MAC tag)",
     }
     datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
-    values = pooled_ci(rows, ["dataset", "variant", "attack"])
+    values = seed_summary(rows, ["dataset", "variant", "attack"])
     rejected = agg(rows, ["dataset", "variant", "attack"], "poison_docs_rejected")
     body = []
     for variant in order:
@@ -1023,19 +1370,23 @@ def tab_provenance(rows: list[Row], out_dir: Path) -> Path:
         body.append(cells)
     header = ["Ingestion control"]
     for dataset in datasets:
-        header += [f"{DATASET_LABELS[dataset]} static", f"{DATASET_LABELS[dataset]} adaptive"]
+        header += [
+            rf"\shortstack{{{DATASET_LABELS[dataset]}\\static}}",
+            rf"\shortstack{{{DATASET_LABELS[dataset]}\\adaptive}}",
+        ]
     header.append("Rejected docs")
     return _write(
         out_dir / "tab_provenance.tex",
         latex_table(
-            "Attack success rate under ingestion controls of increasing strength, against a "
+            "Attack success under ingestion controls. Measured against a "
             "static (PoisonedRAG) and a provenance-spoofing adaptive adversary, $3$ documents "
             "per target. The final column counts poisoned documents rejected at ingestion for "
             "the adaptive adversary on the first dataset.",
             "tab:provenance",
             header,
             body,
-            column_spec="l" + "r" * (len(header) - 1),
+            column_spec=(r">{\raggedright\arraybackslash}p{1.65in}"
+                         + r">{\centering\arraybackslash}X" * (len(header) - 1)),
         ),
     )
 
@@ -1071,7 +1422,7 @@ def tab_detection(rows: list[Row], threshold_rows: list[Row], out_dir: Path) -> 
     return _write(
         out_dir / "tab_detection.tex",
         latex_table(
-            "Retrieval-filter detection quality, measured in the filter-only configuration so "
+            "Retrieval-filter detection quality. Measured in the filter-only configuration so "
             "that Layer 1 does not remove the candidates the filter is being scored on. AUROC "
             "and average precision (AUPRC) are threshold-free and computed over every retrieval "
             "candidate; TPR is measured at the deployed operating point. Poisoned candidates "
@@ -1122,7 +1473,7 @@ def tab_latency(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
 def tab_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
     """Attack success with a susceptible and with a hardened generator."""
     subset = [r for r in rows if r["dataset"] == dataset]
-    values = pooled_ci(subset, ["config", "follow_injections", "attack"], "conditional_asr",
+    values = seed_summary(subset, ["config", "follow_injections", "attack"], "conditional_asr",
                        "n_baseline_correct")
     body = []
     for attack in ATTACK_ORDER:
@@ -1135,7 +1486,7 @@ def tab_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
     return _write(
         out_dir / "tab_generator.tex",
         latex_table(
-            "Contribution of generator susceptibility, as attack-attributable success rate. "
+            "Contribution of generator susceptibility. Reported as attributable success rate. "
             "A \\emph{hardened} generator refuses "
             "instructions found in retrieved text but still answers extractively from it, so "
             "the residual risk in that column is attributable to retrieval rather than to "
@@ -1147,6 +1498,317 @@ def tab_generator(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Pat
             column_spec="lrrrr",
         ),
     )
+
+
+def load_local_model_summary(results_dir: Path) -> Row | None:
+    local_dir = results_dir / "local_model"
+    confirmation_paths = [local_dir / "confirmation.jsonl", results_dir / "confirmation.jsonl"]
+    confirmation_path = next((path for path in confirmation_paths if path.exists()), None)
+    if confirmation_path is not None:
+        grouped: dict[str, dict[str, Row]] = {}
+        with confirmation_path.open("r", encoding="utf-8") as handle:
+            rows = [json.loads(line) for line in handle if line.strip()]
+        for row in rows:
+            model = str(row.get("model", ""))
+            config = str(row.get("config", ""))
+            attack_name = str(row.get("attack", ""))
+            if not model or not config:
+                continue
+            cell = grouped.setdefault(model, {}).setdefault(
+                config, {"clean_rows": [], "attack_rows": defaultdict(list)}
+            )
+            if attack_name == "clean":
+                cell["clean_rows"].append(row)
+                continue
+            cell["attack_rows"][attack_name].append(row)
+        models: dict[str, dict[str, Row]] = {}
+        for model, config_rows in grouped.items():
+            models[model] = {}
+            for config, cell in config_rows.items():
+                clean_rows = cell["clean_rows"]
+                n_queries = sum(int(row.get("n_queries") or 0) for row in clean_rows)
+                correct = sum(
+                    round(float(row.get("clean_accuracy") or 0.0) * int(row.get("n_queries") or 0))
+                    for row in clean_rows
+                )
+                abstained = sum(
+                    round(float(row.get("abstention_rate") or 0.0) * int(row.get("n_queries") or 0))
+                    for row in clean_rows
+                )
+                clean = {
+                    "clean_accuracy": correct / n_queries if n_queries else None,
+                    "clean_abstention_rate": abstained / n_queries if n_queries else None,
+                    "n_queries": n_queries,
+                    "n_questions_per_seed": max(
+                        (int(row.get("n_queries") or 0) for row in clean_rows), default=0
+                    ),
+                    "n_seeds": len({row.get("seed") for row in clean_rows}),
+                    "attacks": {},
+                }
+                for attack_name, attack_rows in cell["attack_rows"].items():
+                    n_attacked = sum(int(row.get("n_attacked") or 0) for row in attack_rows)
+                    raw_successes = sum(
+                        round(
+                            float(row.get("attack_success_rate") or 0.0)
+                            * int(row.get("n_attacked") or 0)
+                        )
+                        for row in attack_rows
+                    )
+                    n_baseline_correct = sum(
+                        int(row.get("n_baseline_correct") or 0) for row in attack_rows
+                    )
+                    attributable_successes = sum(
+                        round(
+                            float(row.get("conditional_asr") or 0.0)
+                            * int(row.get("n_baseline_correct") or 0)
+                        )
+                        for row in attack_rows
+                    )
+                    raw_ci = wilson_interval(raw_successes, n_attacked)
+                    conditional_ci = wilson_interval(
+                        attributable_successes, n_baseline_correct
+                    )
+                    clean["attacks"][attack_name] = {
+                        "asr": raw_successes / n_attacked if n_attacked else None,
+                        "asr_wilson_95_ci": list(raw_ci),
+                        "conditional_asr": (
+                            attributable_successes / n_baseline_correct
+                            if n_baseline_correct
+                            else None
+                        ),
+                        "conditional_asr_wilson_95_ci": list(conditional_ci),
+                        "n_attacked": n_attacked,
+                        "n_baseline_correct": n_baseline_correct,
+                        "n_seeds": len({row.get("seed") for row in attack_rows}),
+                        "attacked_accuracy": None,
+                        "abstention_rate": None,
+                        "poison_used_rate": None,
+                    }
+                models[model][config] = clean
+        if models:
+            return {"models": models}
+
+    candidates = [local_dir / "summary.json", results_dir / "summary.json"]
+    summary_path = next((path for path in candidates if path.exists()), None)
+    if summary_path is None:
+        return None
+    return json.loads(summary_path.read_text(encoding="utf-8"))
+
+
+def tab_local_model(
+    results_dir: Path,
+    out_dir: Path,
+    query_intervals: Sequence[Row] = (),
+) -> Path | None:
+    """Render the adaptive local-model confirmation from its aggregate summary."""
+    summary = load_local_model_summary(results_dir)
+    if summary is None:
+        return None
+    models = summary.get("models", {})
+    model_labels = {
+        "qwen2.5-0.5b-local": "Qwen2.5 0.5B Instruct",
+        "llama3.2-1b-local": "Llama 3.2 1B Instruct",
+        "qwen2.5:7b": "Qwen2.5 7B (Ollama)",
+        "llama3.1:8b": "Llama 3.1 8B (Ollama)",
+    }
+    config_labels = {
+        "none": "None",
+        "L1": "L1 source verification",
+        "L2": "L2 retrieval filter",
+        "L3": "L3 robust aggregation",
+        "L4": "L4 monitoring",
+        "full": "Full stack",
+        "full_signed": "Full + HMAC auth.",
+        "full_independent": "Full + independence disc.",
+        "full_signed_independent": "Full + HMAC + indep. disc.",
+    }
+    intervals_by_cell = {
+        (
+            str(row.get("model", "")),
+            str(row.get("config", "")),
+            str(row.get("attack", "")),
+        ): row
+        for row in query_intervals
+    }
+    def interval(value: float | None, bounds: Sequence[float] | None) -> str:
+        if value is None or bounds is None or bounds[0] is None or bounds[1] is None:
+            return "n/a"
+        return f"{value:.2f} [{bounds[0]:.2f}, {bounds[1]:.2f}]"
+
+    body: list[str] = []
+    attack_labels = {
+        "poisoned_rag": "PoisonedRAG",
+        "prompt_injection": "Prompt injection",
+        "adaptive_poison": "Adaptive poison",
+    }
+    for model in model_labels:
+        model_data = models.get(model)
+        if not model_data:
+            continue
+        for config, config_label in config_labels.items():
+            cell = model_data.get(config)
+            if not cell:
+                continue
+            clean = cell.get("clean_accuracy")
+            clean_abstention = cell.get("clean_abstention_rate")
+            clean_utility = (
+                f"{fmt(clean)} / {fmt(clean_abstention)}"
+                if clean_abstention is not None
+                else fmt(clean)
+            )
+            for attack_name, attack_label in attack_labels.items():
+                attack = cell.get("attacks", {}).get(attack_name, {})
+                if not attack:
+                    continue
+                interval_row = intervals_by_cell.get((model, config, attack_name), {})
+                raw_bounds = attack.get("asr_wilson_95_ci")
+                conditional_bounds = attack.get("conditional_asr_wilson_95_ci")
+                if interval_row:
+                    raw_bounds = [interval_row.get("asr_ci_low"), interval_row.get("asr_ci_high")]
+                    conditional_bounds = [
+                        interval_row.get("conditional_asr_ci_low"),
+                        interval_row.get("conditional_asr_ci_high"),
+                    ]
+                conditional = interval(
+                    attack.get("conditional_asr"), conditional_bounds
+                )
+                n0 = attack.get("n_baseline_correct")
+                if n0 is None and clean is not None:
+                    n0 = round(float(clean) * int(cell.get("n_queries", 0)))
+                n0_label = str(n0) if n0 is not None else "n/a"
+                body.append(
+                    f"{model_labels[model]} & {config_label} & {attack_label} & {clean_utility} & "
+                    f"{interval(attack.get('asr'), raw_bounds)} & "
+                    f"{conditional} & {n0_label} \\\\"
+                )
+    if not body:
+        return None
+    queries = sorted({
+        int(data.get("n_questions_per_seed", data.get("n_queries", 0)))
+        for model_data in models.values()
+        for data in model_data.values()
+        if data.get("n_questions_per_seed", data.get("n_queries")) is not None
+    })
+    seeds = sorted({
+        int(data.get("n_seeds", 1))
+        for model_data in models.values()
+        for data in model_data.values()
+    })
+    n_query_label = str(queries[0]) if len(queries) == 1 else "the reported fixed sample"
+    n_seed_label = (
+        "one seed" if seeds == [1]
+        else f"{seeds[0]} seeds" if len(seeds) == 1
+        else "the included seeds"
+    )
+    if query_intervals:
+        interval_caption = (
+            f"Brackets give 95\\% question-cluster bootstrap intervals over {n_query_label} "
+            f"distinct SQuAD questions, conditional on {n_seed_label}."
+        )
+        interval_name = "cluster CI"
+    else:
+        interval_caption = (
+            "Brackets give 95\\% Wilson intervals over pooled query-seed trials, treating "
+            f"trials as independent; each seed uses {n_query_label} fixed SQuAD questions."
+        )
+        interval_name = "Wilson"
+    lines = [
+        r"\begin{table*}[t]",
+        r"\begin{adjustwidth}{-\extralength}{0cm}",
+        r"\scriptsize",
+        r"\setlength{\tabcolsep}{2pt}",
+        "\\caption{Local-model confirmation.\\label{tab:local-model}}",
+        r"\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.25in}"
+        r">{\raggedright\arraybackslash}p{1.1in}"
+        r">{\raggedright\arraybackslash}p{0.85in}Xrrr@{}}",
+        r"\toprule",
+        r"\textbf{Model} & \textbf{Defense} & \textbf{Attack} & "
+        r"\shortstack{\textbf{Clean acc.}/\textbf{abst.}} & "
+        r"\shortstack{\textbf{ASR}\\\textbf{(95\% " + interval_name + r")}} & "
+        r"\shortstack{\textbf{Attributable ASR}\\\textbf{(95\% " + interval_name + r")}} & "
+        r"\textbf{$n_0$}\\",
+        r"\midrule",
+        *body,
+        r"\bottomrule",
+        r"\end{tabularx}",
+        "\\par\\vspace{3pt}",
+        "\\noindent\\parbox{\\linewidth}{\\footnotesize ASR is unconditional; attributable "
+        "ASR is restricted to queries the same configuration answered correctly in its clean "
+        "run. $n_0$ is the clean-correct denominator. "
+        f"{interval_caption}}}",
+        r"\end{adjustwidth}",
+        r"\end{table*}",
+    ]
+    return _write(out_dir / "tab_local_model.tex", "\n".join(lines) + "\n")
+
+
+def tab_local_paired(rows: Sequence[Row], out_dir: Path) -> Path | None:
+    """Render paired query-cluster differences for the local full-vs-none comparison."""
+    if not rows:
+        return None
+    model_labels = {
+        "qwen2.5:7b": "Qwen2.5 7B (Ollama)",
+        "llama3.1:8b": "Llama 3.1 8B (Ollama)",
+    }
+    attack_labels = {
+        "poisoned_rag": "PoisonedRAG",
+        "prompt_injection": "Prompt injection",
+        "adaptive_poison": "Adaptive poison",
+    }
+
+    def signed_interval(value: float | None, low: float | None, high: float | None) -> str:
+        if value is None or low is None or high is None:
+            return "n/a"
+        return f"{value:+.2f} [{low:+.2f}, {high:+.2f}]"
+
+    body = []
+    for row in rows:
+        model = str(row.get("model", ""))
+        attack = str(row.get("attack", ""))
+        if model not in model_labels or attack not in attack_labels:
+            continue
+        raw_difference = signed_interval(
+            row.get("raw_asr_difference"),
+            row.get("raw_asr_difference_ci_low"),
+            row.get("raw_asr_difference_ci_high"),
+        )
+        attributable_difference = signed_interval(
+            row.get("attributable_asr_difference"),
+            row.get("attributable_asr_difference_ci_low"),
+            row.get("attributable_asr_difference_ci_high"),
+        )
+        body.append(
+            f"{model_labels[model]} & {attack_labels[attack]} & "
+            f"{raw_difference} & {attributable_difference} & "
+            f"{row.get('n_paired_questions', 'n/a')}/{row.get('n_seeds', 'n/a')} \\\\"
+        )
+    if not body:
+        return None
+    lines = [
+        r"\begin{table*}[t]",
+        r"\begin{adjustwidth}{-\extralength}{0cm}",
+        r"\scriptsize",
+        r"\setlength{\tabcolsep}{3pt}",
+        r"\caption{Paired local-model differences.\label{tab:local-paired}}",
+        r"\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.35in}p{0.95in}XXr@{}}",
+        r"\toprule",
+        r"\textbf{Model} & \textbf{Attack} & "
+        r"\shortstack{\textbf{Raw ASR difference}\\\textbf{(95\% paired CI)}} & "
+        r"\shortstack{\textbf{Attributable ASR difference}\\\textbf{(95\% paired CI)}} & "
+        r"\textbf{Questions/seeds}\\",
+        r"\midrule",
+        *body,
+        r"\bottomrule",
+        r"\end{tabularx}",
+        r"\par\vspace{3pt}",
+        r"\noindent\parbox{\linewidth}{\footnotesize Full minus none, so negative values "
+        r"favour the full stack. Brackets give 95\% question-cluster bootstrap intervals, "
+        r"conditional on the included seeds. Attributable ASR uses each configuration's own "
+        r"clean-correct baseline.}",
+        r"\end{adjustwidth}",
+        r"\end{table*}",
+    ]
+    return _write(out_dir / "tab_local_paired.tex", "\n".join(lines) + "\n")
 
 
 def tab_utility(rows: list[Row], out_dir: Path) -> Path:
@@ -1168,7 +1830,11 @@ def tab_utility(rows: list[Row], out_dir: Path) -> Path:
         body.append(cells)
     header = ["Configuration"]
     for dataset in datasets:
-        header += [f"{DATASET_LABELS[dataset]} acc.", "Abstain", "FPR"]
+        header += [
+            rf"\shortstack{{{DATASET_LABELS[dataset]}\\acc.}}",
+            "Abstain",
+            "FPR",
+        ]
     return _write(
         out_dir / "tab_utility.tex",
         latex_table(
@@ -1179,7 +1845,8 @@ def tab_utility(rows: list[Row], out_dir: Path) -> Path:
             "tab:utility",
             header,
             body,
-            column_spec="l" + "rrr" * len(datasets),
+            column_spec=(r">{\raggedright\arraybackslash}p{1.55in}"
+                         + r">{\centering\arraybackslash}X" * (3 * len(datasets))),
         ),
     )
 
@@ -1246,7 +1913,14 @@ def tab_examples(out_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
+def macros(
+    studies: dict[str, list[Row]],
+    out_dir: Path,
+    query_uncertainty: Sequence[Row] = (),
+    local_models: Row | None = None,
+    compromise_uncertainty: Sequence[Row] = (),
+    paired_mechanism: Sequence[Row] = (),
+) -> Path:
     main = studies.get("main", [])
     evasion = studies.get("evasion", [])
     provenance = studies.get("provenance", [])
@@ -1257,8 +1931,8 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
     def macro(name: str, value: str) -> None:
         lines.append(f"\\newcommand{{\\{macro_name(name)}}}{{{value}}}")
 
-    values = pooled_ci(main, ["dataset", "config", "attack"])
-    attributable = pooled_ci(main, ["dataset", "config", "attack"], "conditional_asr",
+    values = seed_summary(main, ["dataset", "config", "attack"])
+    attributable = seed_summary(main, ["dataset", "config", "attack"], "conditional_asr",
                              "n_baseline_correct")
     static = [a for a in ATTACK_ORDER if a != "adaptive_poison"]
     for dataset in {r["dataset"] for r in main}:
@@ -1276,7 +1950,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
                 ("casrStatic",
                  {"rate_field": "conditional_asr", "n_field": "n_baseline_correct"}),
             ):
-                pooled = pooled_ci(static_rows, [], **kwargs)
+                pooled = seed_summary(static_rows, [], **kwargs)
                 if pooled.get(()):
                     macro(f"{prefix}{suffix}", f"{pooled[()][0]:.2f}")
             hit = values.get((dataset, config, "adaptive_poison"))
@@ -1299,7 +1973,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
                       f"{clean[(config,)]:.2f}")
 
     if evasion:
-        ev = pooled_ci([r for r in evasion if r["dataset"] == "squad"], ["config", "disabled"])
+        ev = seed_summary([r for r in evasion if r["dataset"] == "squad"], ["config", "disabled"])
         for key in ["none", *EVASION_LABELS]:
             for config in ("full", "full_signed"):
                 hit = ev.get((config, key))
@@ -1308,11 +1982,11 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
                     macro(f"evasion{config.replace('_', '').capitalize()}{name}",
                           f"{hit[0]:.2f}")
     if provenance:
-        pv = pooled_ci([r for r in provenance if r["dataset"] == "squad"],
+        pv = seed_summary([r for r in provenance if r["dataset"] == "squad"],
                        ["variant", "attack"])
         # The quota rung behaves differently per corpus (it is a volume control, so what
         # matters is the campaign-to-corpus ratio), so the prose quotes a second dataset.
-        hotpot = pooled_ci([r for r in provenance if r["dataset"] == "hotpotqa"],
+        hotpot = seed_summary([r for r in provenance if r["dataset"] == "hotpotqa"],
                            ["variant", "attack"])
         for variant in ("quota", "signed"):
             hit = hotpot.get((variant, "adaptive_poison"))
@@ -1355,7 +2029,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
         squad = [r for r in threshold_rows if r["dataset"] == "squad"]
         adaptive = agg([r for r in squad if r["attack"] == "adaptive_poison"],
                        ["threshold"], "filter_tpr")
-        adaptive_asr = pooled_ci([r for r in squad if r["attack"] == "adaptive_poison"],
+        adaptive_asr = seed_summary([r for r in squad if r["attack"] == "adaptive_poison"],
                                  ["threshold"], "conditional_asr", "n_baseline_correct")
         clean = agg([r for r in squad if r["attack"] == "clean"], ["threshold"],
                     "clean_accuracy")
@@ -1382,15 +2056,103 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
             for attack, aname in (("adaptive_poison", "Adaptive"), ("poisoned_rag", "Static")):
                 for config, cname in (("none", "None"), ("full", "Full"),
                                       ("full_signed", "Signed")):
-                    pooled = pooled_ci(
+                    pooled = seed_summary(
                         [r for r in budget if r["dataset"] == dataset
                          and r["config"] == config and r["attack"] == attack],
                         ["n_per_target"], "conditional_asr", "n_baseline_correct",
                     )
-                    for n in (1, 2, 20):
+                    for n in (1, 2, 3, 5, 10, 20):
                         hit = pooled.get((n,))
                         if hit:
                             macro(f"budget{aname}{cname}{tag}B{n}", f"{hit[0]:.2f}")
+
+    # Compromised authorised publisher. The pair of interest is the same stack under the two
+    # corroboration units, so both are emitted at every budget, together with the abstention
+    # that independence discounting trades for the reduction.
+    compromise = studies.get("compromise", [])
+    if compromise:
+        budgets = sorted({r["n_per_target"] for r in compromise})
+        for dataset in {r["dataset"] for r in compromise}:
+            tag = dataset.capitalize()
+            for config, cname in (("full_signed", "Signed"),
+                                  ("full_signed_independent", "SignedIndependent")):
+                subset = [r for r in compromise
+                          if r["dataset"] == dataset and r["config"] == config]
+                attacked_rows = [r for r in subset if r["attack"] != "clean"]
+                pooled = seed_summary(attacked_rows, ["n_per_target"],
+                                      "conditional_asr", "n_baseline_correct")
+                # Abstention under attack is the quantity of interest: denied a fabricated
+                # majority, the layer should decline rather than return the poison. Clean rows
+                # carry n_attacked = 0, so they cannot be pooled on the attacked denominator.
+                abstained = seed_summary(attacked_rows, ["n_per_target"],
+                                         "abstention_rate", "n_attacked")
+                benign = [r for r in subset if r["attack"] == "clean"]
+                clean = seed_summary(benign, ["n_per_target"], "clean_accuracy", "n_clean")
+                for n in budgets:
+                    hit = pooled.get((n,))
+                    if hit:
+                        macro(f"compromise{cname}{tag}B{n}", f"{hit[0]:.2f}")
+                    abst = abstained.get((n,))
+                    if abst:
+                        macro(f"compromiseAbstain{cname}{tag}B{n}", f"{abst[0]:.2f}")
+                    acc = clean.get((n,))
+                    if acc:
+                        macro(f"compromiseCleanAcc{cname}{tag}B{n}", f"{acc[0]:.2f}")
+
+    # Detection quality, quoted by the condensed ablation summary. Measured in the
+    # filter-only configuration, as the detection table is.
+    filter_only = [r for r in main if r["config"] == "L2"]
+    if filter_only:
+        auroc = agg(filter_only, ["dataset", "attack"], "detection_auroc")
+        fpr = agg([r for r in filter_only if r["attack"] == "clean"], ["dataset"],
+                  "filter_fpr")
+        for dataset in {r["dataset"] for r in filter_only}:
+            tag = dataset.capitalize()
+            for attack, aname in (("poisoned_rag", "Poisonedrag"),
+                                  ("adaptive_poison", "Adaptive")):
+                value = auroc.get((dataset, attack))
+                if value is not None:
+                    macro(f"detectionAuroc{aname}{tag}", f"{value:.2f}")
+            clean_fpr = fpr.get((dataset,))
+            if clean_fpr is not None:
+                macro(f"detectionFpr{tag}", f"{clean_fpr:.2f}")
+
+    # Binding: whether the attribute the rule groups on is one the adversary can choose.
+    binding = [r for r in studies.get("binding", []) if r["attack"] != "clean"]
+    if binding:
+        for dataset in {r["dataset"] for r in binding}:
+            tag = dataset.capitalize()
+            for rule in ("identifier", "unbound", "bound"):
+                for diversify, dname in ((False, "Fixed"), (True, "Varies")):
+                    pooled = seed_summary(
+                        [r for r in binding if r["dataset"] == dataset
+                         and r["rule"] == rule and r["diversify_metadata"] is diversify],
+                        ["seed"], "conditional_asr", "n_baseline_correct",
+                    )
+                    values = [v[0] for v in pooled.values()]
+                    if values:
+                        macro(f"binding{rule.capitalize()}{dname}{tag}",
+                              f"{statistics.fmean(values):.2f}")
+
+    # Publisher-diversity control: whether the mechanism's benefit tracks how many independent
+    # publishers actually contribute the corpus.
+    diversity = studies.get("diversity", [])
+    if diversity:
+        counts = sorted({r["publishers"] for r in diversity})
+        for dataset in {r["dataset"] for r in diversity}:
+            tag = dataset.capitalize()
+            for config, cname in (("full_signed", "Signed"),
+                                  ("full_signed_independent", "SignedIndependent")):
+                pooled = seed_summary(
+                    [r for r in diversity
+                     if r["dataset"] == dataset and r["config"] == config
+                     and r["attack"] != "clean"],
+                    ["publishers"], "conditional_asr", "n_baseline_correct",
+                )
+                for publishers in counts:
+                    hit = pooled.get((publishers,))
+                    if hit:
+                        macro(f"diversity{cname}{tag}P{publishers}", f"{hit[0]:.2f}")
 
     # Over-retrieval sweep at both operating points, at the extremes of the multiplier range.
     static_attacks = [a for a in ATTACK_ORDER if a != "adaptive_poison"]
@@ -1403,7 +2165,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
         abstain = agg(clean, ["candidate_multiplier"], "abstention_rate")
         fpr = agg(clean, ["candidate_multiplier"], "filter_fpr")
         latency = agg(source, ["candidate_multiplier"], "p95_latency_ms")
-        asr = pooled_ci([r for r in source if r["attack"] in static_attacks],
+        asr = seed_summary([r for r in source if r["attack"] in static_attacks],
                         ["candidate_multiplier"], "conditional_asr", "n_baseline_correct")
         for m, edge in ((1, "Lo"), (20, "Hi")):
             if (m,) in acc:
@@ -1411,7 +2173,7 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
             if (m,) in abstain:
                 macro(f"backfill{tag}Abstain{edge}", f"{abstain[(m,)]:.2f}")
             if (m,) in fpr:
-                macro(f"backfill{tag}Fpr{edge}", f"{fpr[(m,)]:.2f}")
+                macro(f"backfill{tag}Fpr{edge}", f"{100 * fpr[(m,)]:.1f}\\%")
             if (m,) in latency:
                 macro(f"backfill{tag}Lat{edge}", f"{latency[(m,)]:.0f}")
             hit = asr.get((m,))
@@ -1427,6 +2189,100 @@ def macros(studies: dict[str, list[Row]], out_dir: Path) -> Path:
             tag = f"{config.replace('_', '').capitalize()}{dataset.capitalize()}"
             macro(f"{name}{tag}", f"{value:.0f}" if value >= 10 else f"{value:.1f}")
     macro("nSeeds", str(len({r["seed"] for r in main}) or 3))
+    # The primary adaptive result is quoted in the abstract and conclusion. Keep its
+    # question-cluster intervals generated from the same per-query sidecars as the report.
+    for row in query_uncertainty:
+        if (row.get("dataset") != "squad" or row.get("attack") != "adaptive_poison"
+                or row.get("config") not in {"none", "full", "full_signed"}):
+            continue
+        config = str(row["config"]).replace("_", "").capitalize()
+        for metric, low_key, high_key in (
+            ("asr", "asr_ci_low", "asr_ci_high"),
+            ("casr", "conditional_asr_ci_low", "conditional_asr_ci_high"),
+            ("targetTokenF", "target_token_f1_ci_low", "target_token_f1_ci_high"),
+        ):
+            for edge, key in (("Low", low_key), ("High", high_key)):
+                if row.get(key) is not None:
+                    macro(f"{metric}CIAdaptiveSquad{config}{edge}", f"{row[key]:.2f}")
+        if row.get("target_token_f1") is not None:
+            macro(f"targetTokenFAdaptiveSquad{config}", f"{row['target_token_f1']:.2f}")
+    # The compromised-publisher comparison is the paper's central claim, so it carries the
+    # same question-cluster intervals as the primary adaptive result rather than point
+    # estimates alone.
+    for row in compromise_uncertainty:
+        if row.get("attack") == "clean":
+            continue
+        config = str(row.get("config", "")).replace("_", "").capitalize()
+        dataset = str(row.get("dataset", "")).capitalize()
+        budget = row.get("n_per_target")
+        if not config or not dataset or budget is None:
+            continue
+        for edge, key in (("Low", "conditional_asr_ci_low"),
+                          ("High", "conditional_asr_ci_high")):
+            if row.get(key) is not None:
+                macro(f"compromiseCI{config}{dataset}B{budget}{edge}", f"{row[key]:.2f}")
+
+    # Paired comparison of the two corroboration units on served models. The arms share
+    # retrieval and generation exactly, so the paired difference is the informative statistic
+    # and the discordant counts say what it is made of.
+    for row in paired_mechanism:
+        if row.get("attack") != "adaptive_poison":
+            continue
+        alias = {"qwen2.5:7b": "Qwen", "llama3.1:8b": "Llama"}.get(str(row.get("model")))
+        if alias is None:
+            continue
+        delta = row.get("attributable_asr_difference")
+        if delta is not None:
+            macro(f"pairedIndep{alias}Delta", f"{delta:+.2f}")
+        for edge, key in (("Low", "attributable_asr_difference_ci_low"),
+                          ("High", "attributable_asr_difference_ci_high")):
+            if row.get(key) is not None:
+                macro(f"pairedIndep{alias}{edge}", f"{row[key]:+.2f}")
+        if row.get("n_prevented_by_treatment") is not None:
+            macro(f"pairedIndep{alias}Prevented", str(row["n_prevented_by_treatment"]))
+        if row.get("n_caused_by_treatment") is not None:
+            macro(f"pairedIndep{alias}Caused", str(row["n_caused_by_treatment"]))
+        if row.get("n_paired_questions") is not None:
+            macro(f"pairedIndep{alias}Questions", str(row["n_paired_questions"]))
+
+    adaptive_mech = [r for r in paired_mechanism if r.get("attack") == "adaptive_poison"]
+    if adaptive_mech:
+        prevented = sum(int(r.get("n_prevented_by_treatment") or 0) for r in adaptive_mech)
+        caused = sum(int(r.get("n_caused_by_treatment") or 0) for r in adaptive_mech)
+        pairs = sum(int(r.get("n_paired_questions") or 0) for r in adaptive_mech)
+        macro("pairedIndepPooledPrevented", str(prevented))
+        macro("pairedIndepPooledCaused", str(caused))
+        macro("pairedIndepPooledPairs", str(pairs))
+        # Exact two-sided McNemar over the discordant pairs.
+        discordant = prevented + caused
+        if discordant:
+            fewer = min(prevented, caused)
+            tail = sum(math.comb(discordant, i) for i in range(fewer + 1))
+            macro("pairedIndepPooledP", f"{min(1.0, 2 * tail * 0.5 ** discordant):.3f}")
+
+    if local_models:
+        aliases = {
+            "qwen2.5-0.5b-local": "Qwen",
+            "llama3.2-1b-local": "Llama",
+            "qwen2.5:7b": "Qwen",
+            "llama3.1:8b": "Llama",
+        }
+        config_names = {
+            "none": "None", "L1": "LOne", "L2": "LTwo", "L3": "LThree",
+            "L4": "LFour", "full": "Full", "full_signed": "FullSigned",
+            "full_independent": "FullIndependent",
+            "full_signed_independent": "FullSignedIndependent",
+        }
+        for model, alias in aliases.items():
+            for config, config_name in config_names.items():
+                cell = local_models.get("models", {}).get(model, {}).get(config, {})
+                attack = cell.get("attacks", {}).get("adaptive_poison", {})
+                if cell.get("clean_accuracy") is not None:
+                    macro(f"localCleanAcc{alias}{config_name}", f"{cell['clean_accuracy']:.2f}")
+                if attack.get("asr") is not None:
+                    macro(f"localAsr{alias}{config_name}", f"{attack['asr']:.2f}")
+                if attack.get("conditional_asr") is not None:
+                    macro(f"localCasr{alias}{config_name}", f"{attack['conditional_asr']:.2f}")
     return _write(out_dir / "macros.tex", "\n".join(lines) + "\n")
 
 
@@ -1447,6 +2303,8 @@ _KNOWN_TEX_MACROS = frozenset(
     sum cdot ge le neq in notin gets bot mathrm mathcal sum_ dots ldots times approx equation
     clip sigma tau rho gamma beta mu theta pi delta kappa Sigma phi lambda alpha epsilon
     top_k top_1 begin_ minipage centering hline midrule_ providecommand newcommand
+    theHALG parbox linewidth seqsplit addlinespace adjustwidth extralength IfFileExists
+    tabcolsep setlength raggedright arraybackslash shortstack textsuperscript
     """.split()
 )
 
@@ -1466,10 +2324,248 @@ def verify_macros(body: Path, macros: Path) -> list[str]:
     # Match greedily over letters *and* digits so that an illegal name such as
     # "casrStaticSquadL3" is reported rather than silently truncated to a legal prefix.
     used = set(re.findall(r"\\([A-Za-z][A-Za-z0-9]*)", body.read_text(encoding="utf-8")))
-    # Result macros are the ones this module emits; anything else is LaTeX's business.
-    prefixes = ("asr", "casr", "cleanAcc", "evasion", "prov", "nSeeds")
-    candidates = {m for m in used if m.startswith(prefixes)}
+    # Every macro this module emits is camel case: it starts lower case and carries an upper
+    # case letter later. No plain LaTeX command has that shape, so this catches a name from
+    # any result family, including ones added after this check was written. A hardcoded
+    # prefix list did not, which is how three invented names once reached the PDF.
+    def looks_generated(name: str) -> bool:
+        return name[:1].islower() and any(c.isupper() for c in name[1:])
+
+    candidates = {m for m in used if looks_generated(m)}
     return sorted(candidates - defined - _KNOWN_TEX_MACROS)
+
+
+def fig_compromise(rows: list[Row], out_dir: Path) -> Path:
+    """Attack success against upload budget when the adversary holds a publisher key.
+
+    The two curves are the same stack differing only in the unit of corroboration, so the gap
+    between them is the mechanism's effect and the slope of the upper curve is the escalation
+    it removes.
+    """
+    import matplotlib.pyplot as plt
+
+    datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
+    values = seed_summary([r for r in rows if r["attack"] != "clean"],
+                          ["dataset", "config", "n_per_target"],
+                          "conditional_asr", "n_baseline_correct")
+    budgets = sorted({r["n_per_target"] for r in rows})
+    series = [
+        ("full_signed", C_SIGNED, "^", "-"),
+        ("full_signed_independent", C_INDEP, "o", "--"),
+    ]
+    fig, axes = plt.subplots(1, len(datasets), figsize=(7.1, 2.5), squeeze=False, sharey=True)
+    for ax, dataset in zip(axes[0], datasets, strict=False):
+        for config, color, marker, ls in series:
+            xs, ys = [], []
+            for n in budgets:
+                hit = values.get((dataset, config, n))
+                if hit is not None:
+                    xs.append(n)
+                    ys.append(hit[0])
+            if xs:
+                ax.plot(xs, ys, marker=marker, linestyle=ls, color=color,
+                        label=CONFIG_LABELS[config])
+        ax.set_xticks(budgets)
+        ax.set_xticklabels([str(b) for b in budgets])
+        ax.set_xlabel("Poisoned documents per target")
+        ax.set_ylim(-0.04, 1.06)
+        ax.set_title(DATASET_LABELS[dataset], fontsize=8.5)
+    axes[0][0].set_ylabel("Attributable attack success rate")
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, ncol=2, loc="lower center", bbox_to_anchor=(0.5, -0.20),
+               fontsize=6.8)
+    return _save(fig, out_dir, "fig4_compromise")
+
+
+def fig_diversity(rows: list[Row], out_dir: Path) -> Path:
+    """Attack success against the number of independent publishers contributing the corpus."""
+    import matplotlib.pyplot as plt
+
+    datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
+    values = seed_summary([r for r in rows if r["attack"] != "clean"],
+                          ["dataset", "config", "publishers"],
+                          "conditional_asr", "n_baseline_correct")
+    counts = sorted({r["publishers"] for r in rows})
+    series = [
+        ("full_signed", C_SIGNED, "^", "-"),
+        ("full_signed_independent", C_INDEP, "o", "--"),
+    ]
+    fig, axes = plt.subplots(1, len(datasets), figsize=(7.1, 2.5), squeeze=False, sharey=True)
+    for ax, dataset in zip(axes[0], datasets, strict=False):
+        for config, color, marker, ls in series:
+            xs, ys = [], []
+            for publishers in counts:
+                hit = values.get((dataset, config, publishers))
+                if hit is not None:
+                    xs.append(publishers)
+                    ys.append(hit[0])
+            if xs:
+                ax.plot(xs, ys, marker=marker, linestyle=ls, color=color,
+                        label=CONFIG_LABELS[config])
+        ax.set_xscale("log", base=2)
+        ax.set_xticks(counts)
+        ax.set_xticklabels([str(c) for c in counts])
+        ax.set_xlabel("Independent publishers in the corpus")
+        ax.set_ylim(-0.04, 1.06)
+        ax.set_title(DATASET_LABELS[dataset], fontsize=8.5)
+    axes[0][0].set_ylabel("Attributable attack success rate")
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, ncol=2, loc="lower center", bbox_to_anchor=(0.5, -0.20),
+               fontsize=6.8)
+    return _save(fig, out_dir, "fig5_diversity")
+
+
+def tab_compromise(
+    rows: list[Row], out_dir: Path, uncertainty: Sequence[Row] = ()
+) -> Path:
+    """Attributable success under a compromised publisher, by budget and aggregation rule."""
+    datasets = [d for d in DATASET_LABELS if any(r["dataset"] == d for r in rows)]
+    attacked = [r for r in rows if r["attack"] != "clean"]
+    casr = seed_summary(attacked, ["dataset", "config", "n_per_target"],
+                        "conditional_asr", "n_baseline_correct")
+    budgets = sorted({r["n_per_target"] for r in rows})
+    configs = ["full_signed", "full_signed_independent"]
+    unit = {
+        "full_signed": "Document identifier",
+        "full_signed_independent": "Verified signer",
+    }
+
+    intervals = {
+        (str(r.get("dataset")), str(r.get("config")), r.get("n_per_target")): (
+            r.get("conditional_asr_ci_low"), r.get("conditional_asr_ci_high")
+        )
+        for r in uncertainty
+        if r.get("attack") != "clean"
+    }
+    # The clean-correct denominator each attributable rate is computed over.
+    denominators: dict[tuple, int] = {}
+    for row in attacked:
+        key = (row["dataset"], row["config"], row["n_per_target"])
+        denominators[key] = denominators.get(key, 0) + int(row.get("n_baseline_correct") or 0)
+
+    def cell(dataset: str, config: str, budget: int) -> str:
+        hit = casr.get((dataset, config, budget))
+        if hit is None:
+            return "n/a"
+        low, high = intervals.get((dataset, config, budget), (None, None))
+        if low is None or high is None:
+            return f"{hit[0]:.2f}"
+        return f"{hit[0]:.2f} [{low:.2f}, {high:.2f}]"
+
+    lines = [
+        r"\begin{table*}[t]",
+        r"\begin{adjustwidth}{-\extralength}{0cm}",
+        r"\centering",
+        r"\footnotesize",
+        r"\setlength{\tabcolsep}{4pt}",
+        r"\caption{Attack success under a compromised publisher.\label{tab:compromise}}",
+        r"\begin{tabular}{llrrr}",
+        r"\toprule",
+        r"Corpus & Budget & " + " & ".join(unit[c] for c in configs) + r" & $n_0$ \\",
+        r"\midrule",
+    ]
+    for dataset in datasets:
+        for i, budget in enumerate(budgets):
+            values = [cell(dataset, c, budget) for c in configs]
+            n0 = denominators.get((dataset, configs[0], budget), 0)
+            label = DATASET_LABELS[dataset] if i == 0 else ""
+            lines.append(
+                f"{label} & $b={budget}$ & " + " & ".join(values) + f" & {n0} \\\\"
+            )
+        lines.append(r"\addlinespace")
+    lines += [
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\par\vspace{3pt}",
+        r"\noindent\parbox{\linewidth}{\footnotesize Attack-attributable success with 95\% "
+        r"question-cluster bootstrap intervals, under adversary $\mathcal{C}$, which holds one "
+        r"authorised publisher's signing key. Signed ingestion admits its documents by "
+        r"construction, so the columns differ only in the unit agreement is counted over. "
+        r"$n_0$ is the pooled clean-correct denominator across three seeds. Abstention on "
+        r"attacked queries rises with the cap; it is reported in the text.}",
+        r"\end{adjustwidth}",
+        r"\end{table*}",
+    ]
+    return _write(out_dir / "tab_compromise.tex", "\n".join(lines))
+
+
+RULE_LABELS = {
+    "identifier": "Document identifier",
+    "unbound": "Signer, source, author",
+    "bound": "Verified signer",
+}
+RULE_ORDER = ("identifier", "unbound", "bound")
+
+
+def tab_binding(rows: list[Row], out_dir: Path) -> Path:
+    """Attack success per aggregation rule, with and without a metadata-varying adversary."""
+    attacked = [r for r in rows if r["attack"] != "clean"]
+    # Report only corpora that completed every rule against both adversaries; a partial run
+    # would otherwise print a row of "n/a" that reads like a measured result.
+    complete = {
+        d for d in DATASET_LABELS
+        if {(r["rule"], r["diversify_metadata"]) for r in attacked if r["dataset"] == d}
+        == {(rule, flag) for rule in RULE_ORDER for flag in (False, True)}
+    }
+    datasets = [d for d in DATASET_LABELS if d in complete]
+    casr = seed_summary(attacked, ["dataset", "rule", "diversify_metadata"],
+                        "conditional_asr", "n_baseline_correct")
+    abstain = seed_summary(attacked, ["dataset", "rule", "diversify_metadata"],
+                           "abstention_rate", "n_attacked")
+
+    # One corpus needs no corpus column, and the table then fits a single column.
+    single = len(datasets) == 1
+    corpus_note = (
+        f" Measured on {DATASET_LABELS[datasets[0]]}." if single else ""
+    )
+    lines = [
+        r"\begin{table}[t]" if single else r"\begin{table*}[t]",
+    ]
+    if not single:
+        lines.append(r"\begin{adjustwidth}{-\extralength}{0cm}")
+    lines += [
+        r"\centering",
+        r"\footnotesize",
+        r"\setlength{\tabcolsep}{4pt}",
+        r"\caption{Binding of the grouping attribute.\label{tab:binding}}",
+        r"\begin{tabular}{" + ("lrr" if single else "llrr") + r"}",
+        r"\toprule",
+        ("" if single else r"Corpus & ")
+        + r"Aggregation rule & Fixed metadata & Varies author \\",
+        r"\midrule",
+    ]
+    for dataset in datasets:
+        for i, rule in enumerate(RULE_ORDER):
+            cells = []
+            for diversify in (False, True):
+                hit = casr.get((dataset, rule, diversify))
+                abst = abstain.get((dataset, rule, diversify))
+                if hit is None:
+                    cells.append("n/a")
+                elif abst is None:
+                    cells.append(f"{hit[0]:.2f}")
+                else:
+                    cells.append(f"{hit[0]:.2f} ({abst[0]:.2f})")
+            prefix = "" if single else (
+                f"{DATASET_LABELS[dataset] if i == 0 else ''} & "
+            )
+            lines.append(prefix + f"{RULE_LABELS[rule]} & " + " & ".join(cells) + r" \\")
+        if not single:
+            lines.append(r"\addlinespace")
+    lines += [
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\par\vspace{3pt}",
+        r"\noindent\parbox{\linewidth}{\footnotesize Attributable success with abstention "
+        r"on attacked queries in parentheses, at five poisoned documents per target under "
+        r"adversary $\mathcal{C}$, which holds one authorised publisher's key. The author is "
+        r"not covered by the signing envelope, so varying it costs the adversary nothing."
+        + corpus_note + r" Pooled over three seeds.}",
+    ]
+    if not single:
+        lines.append(r"\end{adjustwidth}")
+    lines.append(r"\end{table}" if single else r"\end{table*}")
+    return _write(out_dir / "tab_binding.tex", "\n".join(lines))
 
 
 def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
@@ -1477,12 +2573,134 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
     _style()
     studies = {name: load_rows(results_dir, name) for name in
                ("main", "evasion", "budget", "threshold", "backfill", "backfill_strict",
-                "provenance", "generator")}
+                "provenance", "generator", "compromise", "diversity", "binding")}
     tables = output_dir / "tables"
     figures = output_dir / "figures"
     written: list[Path] = [
         fig_architecture(figures), tab_datasets(tables), tab_examples(tables)
     ]
+    query_records = load_query_records(results_dir)
+    main_query_records = [
+        row for row in query_records if row.get("study", "main") == "main"
+    ]
+    query_uncertainty: list[Row] = []
+    if main_query_records:
+        uncertainty_path = output_dir / "query_uncertainty.json"
+        uncertainty_path.parent.mkdir(parents=True, exist_ok=True)
+        query_uncertainty = query_cluster_summary(main_query_records)
+        uncertainty = {
+            "method": (
+                "Percentile bootstrap for ASR and target token F1 over distinct question "
+                "clusters; each cluster retains "
+                "its outcomes across all included experiment seeds. Intervals describe query "
+                "sampling uncertainty conditional on those seeds. The compact public artifact "
+                "stores SHA-256 identifiers instead of question text."
+            ),
+            "cluster_unit": "exact question text (SHA-256 identifier in compact artifacts)",
+            "confidence_level": 0.95,
+            "bootstrap_replicates": 2_000,
+            "bootstrap_seed": QUERY_BOOTSTRAP_SEED,
+            "results": query_uncertainty,
+        }
+        with uncertainty_path.open("w", encoding="utf-8") as handle:
+            json.dump(uncertainty, handle, indent=2)
+            handle.write("\n")
+        written.append(uncertainty_path)
+
+    confirmation_query_records = [
+        row for row in query_records if row.get("study") == "confirmation"
+    ]
+    local_query_intervals: list[Row] = []
+    compromise_query_records = [
+        row for row in query_records if row.get("study") == "compromise"
+    ]
+    compromise_uncertainty: list[Row] = []
+    if compromise_query_records:
+        compromise_uncertainty = query_cluster_summary(
+            compromise_query_records,
+            keys=("dataset", "config", "attack", "n_per_target"),
+        )
+        compromise_path = output_dir / "compromise_uncertainty.json"
+        compromise_path.parent.mkdir(parents=True, exist_ok=True)
+        with compromise_path.open("w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "method": (
+                        "Percentile bootstrap over distinct question clusters, as for the "
+                        "main study, computed separately per upload budget because attack "
+                        "success depends on it."
+                    ),
+                    "confidence_level": 0.95,
+                    "bootstrap_replicates": 2_000,
+                    "bootstrap_seed": QUERY_BOOTSTRAP_SEED,
+                    "results": compromise_uncertainty,
+                },
+                handle,
+                indent=2,
+            )
+            handle.write("\n")
+        written.append(compromise_path)
+
+    local_uncertainty_path = output_dir / "local_model" / "query_uncertainty.json"
+    if confirmation_query_records:
+        local_query_intervals = query_cluster_summary(
+            confirmation_query_records,
+            keys=("dataset", "model", "config", "attack"),
+        )
+        local_uncertainty_path.parent.mkdir(parents=True, exist_ok=True)
+        local_uncertainty_path.write_text(
+            json.dumps(
+                {
+                    "method": (
+                        "Percentile bootstrap over distinct question clusters; each cluster "
+                        "retains its outcomes across included confirmation seeds."
+                    ),
+                    "confidence_level": 0.95,
+                    "bootstrap_replicates": 2_000,
+                    "bootstrap_seed": QUERY_BOOTSTRAP_SEED,
+                    "results": local_query_intervals,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        written.append(local_uncertainty_path)
+    else:
+        local_uncertainty_path.unlink(missing_ok=True)
+
+    paired_confirmation = paired_confirmation_summary(confirmation_query_records)
+    paired_mechanism = paired_confirmation_summary(
+        confirmation_query_records, baseline="full", treatment="full_independent"
+    )
+    paired_path = output_dir / "local_model" / "paired_uncertainty.json"
+    if paired_confirmation:
+        paired_path.parent.mkdir(parents=True, exist_ok=True)
+        paired_path.write_text(
+            json.dumps(
+                {
+                    "method": (
+                        "Paired percentile bootstrap over exact question clusters, comparing "
+                        "full minus none while keeping each question's outcomes paired across "
+                        "configurations and seeds. Intervals are conditional on included seeds."
+                    ),
+                    "confidence_level": 0.95,
+                    "bootstrap_replicates": 2_000,
+                    "bootstrap_seed": QUERY_BOOTSTRAP_SEED,
+                    "results": paired_confirmation,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        written.append(paired_path)
+        paired_table = tab_local_paired(paired_confirmation, tables)
+        if paired_table is not None:
+            written.append(paired_table)
+    else:
+        paired_path.unlink(missing_ok=True)
+        (tables / "tab_local_paired.tex").unlink(missing_ok=True)
 
     def attempt(label: str, fn: Callable[[], Path]) -> None:
         try:
@@ -1506,6 +2724,15 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
         attempt("fig_evasion", lambda: fig_evasion(studies["evasion"], figures))
     if studies["budget"]:
         attempt("fig_budget", lambda: fig_budget(studies["budget"], figures))
+    if studies["compromise"]:
+        attempt("fig_compromise", lambda: fig_compromise(studies["compromise"], figures))
+        attempt("tab_compromise",
+                lambda: tab_compromise(studies["compromise"], tables,
+                                       compromise_uncertainty))
+    if studies["diversity"]:
+        attempt("fig_diversity", lambda: fig_diversity(studies["diversity"], figures))
+    if studies["binding"]:
+        attempt("tab_binding", lambda: tab_binding(studies["binding"], tables))
     if studies["threshold"]:
         attempt("fig_detection", lambda: fig_detection(studies["threshold"], figures))
         attempt("fig_threshold", lambda: fig_threshold(studies["threshold"], figures))
@@ -1520,7 +2747,20 @@ def build_report(results_dir: Path, output_dir: Path) -> list[Path]:
     if studies["generator"]:
         attempt("tab_generator", lambda: tab_generator(studies["generator"], tables))
         attempt("fig_generator", lambda: fig_generator(studies["generator"], figures))
-    written.append(macros(studies, tables))
+    local_table = tab_local_model(results_dir, tables, local_query_intervals)
+    if local_table is not None:
+        written.append(local_table)
+    local_summary = load_local_model_summary(results_dir)
+    written.append(
+        macros(
+            studies,
+            tables,
+            query_uncertainty,
+            local_summary,
+            compromise_uncertainty,
+            paired_mechanism,
+        )
+    )
     missing = verify_macros(output_dir / "body.tex", tables / "macros.tex")
     if missing:
         print(
