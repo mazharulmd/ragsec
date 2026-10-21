@@ -1240,8 +1240,7 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
             "restricted to queries the same configuration answered correctly with no adversary "
             "present. The two diverge only for the suppression attack, whose raw rate absorbs "
             "the pipeline's own error rate; this is most visible on HotpotQA, where multi-hop "
-            "questions depress clean accuracy. Figure~\\ref{fig:bars} shows the observed "
-            "minimum-to-maximum range across seeds. The last column is clean accuracy on the "
+            "questions depress clean accuracy. The last column is clean accuracy on the "
             "unattacked corpus, i.e.\\ the utility cost of the configuration.",
             "tab:main",
             [
@@ -2100,6 +2099,24 @@ def macros(
                     if acc:
                         macro(f"compromiseCleanAcc{cname}{tag}B{n}", f"{acc[0]:.2f}")
 
+    # Detection quality, quoted by the condensed ablation summary. Measured in the
+    # filter-only configuration, as the detection table is.
+    filter_only = [r for r in main if r["config"] == "L2"]
+    if filter_only:
+        auroc = agg(filter_only, ["dataset", "attack"], "detection_auroc")
+        fpr = agg([r for r in filter_only if r["attack"] == "clean"], ["dataset"],
+                  "filter_fpr")
+        for dataset in {r["dataset"] for r in filter_only}:
+            tag = dataset.capitalize()
+            for attack, aname in (("poisoned_rag", "Poisonedrag"),
+                                  ("adaptive_poison", "Adaptive")):
+                value = auroc.get((dataset, attack))
+                if value is not None:
+                    macro(f"detectionAuroc{aname}{tag}", f"{value:.2f}")
+            clean_fpr = fpr.get((dataset,))
+            if clean_fpr is not None:
+                macro(f"detectionFpr{tag}", f"{clean_fpr:.2f}")
+
     # Binding: whether the attribute the rule groups on is one the adversary can choose.
     binding = [r for r in studies.get("binding", []) if r["attack"] != "clean"]
     if binding:
@@ -2286,6 +2303,8 @@ _KNOWN_TEX_MACROS = frozenset(
     sum cdot ge le neq in notin gets bot mathrm mathcal sum_ dots ldots times approx equation
     clip sigma tau rho gamma beta mu theta pi delta kappa Sigma phi lambda alpha epsilon
     top_k top_1 begin_ minipage centering hline midrule_ providecommand newcommand
+    theHALG parbox linewidth seqsplit addlinespace adjustwidth extralength IfFileExists
+    tabcolsep setlength raggedright arraybackslash shortstack textsuperscript
     """.split()
 )
 
@@ -2305,10 +2324,14 @@ def verify_macros(body: Path, macros: Path) -> list[str]:
     # Match greedily over letters *and* digits so that an illegal name such as
     # "casrStaticSquadL3" is reported rather than silently truncated to a legal prefix.
     used = set(re.findall(r"\\([A-Za-z][A-Za-z0-9]*)", body.read_text(encoding="utf-8")))
-    # Result macros are the ones this module emits; anything else is LaTeX's business.
-    prefixes = ("asr", "casr", "targetTokenF", "cleanAcc", "evasion", "prov", "nSeeds",
-                "localAsr", "localCasr", "localCleanAcc")
-    candidates = {m for m in used if m.startswith(prefixes)}
+    # Every macro this module emits is camel case: it starts lower case and carries an upper
+    # case letter later. No plain LaTeX command has that shape, so this catches a name from
+    # any result family, including ones added after this check was written. A hardcoded
+    # prefix list did not, which is how three invented names once reached the PDF.
+    def looks_generated(name: str) -> bool:
+        return name[:1].islower() and any(c.isupper() for c in name[1:])
+
+    candidates = {m for m in used if looks_generated(m)}
     return sorted(candidates - defined - _KNOWN_TEX_MACROS)
 
 

@@ -963,7 +963,7 @@ assumption. Token F1 is a sensitivity measure rather than an alternative binary 
 
 \subsection{Layer Ablation Against Static Attacks}
 
-Figure~\ref{fig:heatmap} and Figure~\ref{fig:bars} show what each layer contributes.
+Figure~\ref{fig:heatmap} shows what each layer contributes.
 Ingestion verification and retrieval filtering each independently reduce pooled static attack
 success on SQuAD to \casrStaticSquadLOne{} and \casrStaticSquadLTwo{} in attributable terms, and
 the full stack to \casrStaticSquadfull{}. They do so by different mechanisms: Layer~1 rejects
@@ -986,11 +986,6 @@ makes explicit that detection is not prevention.
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{figures/fig2_asr_heatmap.pdf}
 \caption{Attack success by configuration and attack.\label{fig:heatmap}}
-\end{figure*}
-
-\begin{figure*}[t]
-\includegraphics[width=\textwidth]{figures/fig3_asr_bars.pdf}
-\caption{Attack success by configuration on SQuAD.\label{fig:bars}}
 \end{figure*}
 
 \subsection{Suppression Requires the Attributable Rate}
@@ -1476,24 +1471,6 @@ generated-answer text.
 The evaluation corpora are the public SQuAD and
 HotpotQA datasets, downloaded at the revisions recorded in the artifact manifest. No new human
 or animal data were collected.
-
-\appendix
-
-\section{Abbreviations}
-
-\noindent
-\begin{tabularx}{\columnwidth}{@{}lX@{}}
-ASR & Attack success rate\\
-AUPRC & Area under the precision--recall curve (average precision)\\
-AUROC & Area under the receiver operating characteristic curve\\
-FPR & False-positive rate\\
-HMAC & Hash-based message authentication code\\
-JS & Jensen--Shannon (divergence)\\
-LLM & Large language model\\
-QA & Question answering\\
-RAG & Retrieval-augmented generation\\
-TPR & True-positive rate\\
-\end{tabularx}
 
 \bibliographystyle{elsarticle-harv}
 \bibliography{References}
