@@ -120,12 +120,12 @@ CONFIG_LABELS = {
     "L1": "L1 source verification",
     "L2": "L2 retrieval filtering",
     "L3": "L3 robust aggregation",
-    "L3_independent": "L3 + independence discounting",
+    "L3_independent": "L3 + per-principal cap",
     "L4": "L4 monitoring",
     "full": "Full defense",
-    "full_independent": "Full defense + independence discounting",
+    "full_independent": "Full defense + per-principal cap",
     "full_signed": "Full defense + HMAC-authenticated ingestion",
-    "full_signed_independent": "Authenticated ingestion + independence discounting",
+    "full_signed_independent": "Authenticated ingestion + per-principal cap",
 }
 
 EVASION_LABELS = {
@@ -575,7 +575,7 @@ def study_budget(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
 
 
 def study_compromise(datasets: list[str], seeds: list[int]) -> Iterator[Cell]:
-    """Attack success when the adversary holds an authorised publisher's signing key.
+    """Attack success when the adversary holds an authorized publisher's signing key.
 
     Signed ingestion owes its measured protection to an assumption the threat model states and
     never tests: that every holder of a valid key is honest. This study drops it. The
@@ -844,7 +844,7 @@ def study_confirmation(
     """Repeat the headline comparison on real language models.
 
     Every other study uses the deterministic mock generator. That is a deliberate instrument:
-    it fixes generator behaviour exactly, so a change in measured attack success is
+    it fixes generator behavior exactly, so a change in measured attack success is
     attributable to the retrieval pipeline rather than to sampling. It is also the obvious
     objection to the work, because the mock obeys injected instructions by construction and
     believes whatever it is given. This study answers the objection on a reduced grid:

@@ -269,7 +269,7 @@ def paired_confirmation_summary(
     Query and seed pairs are retained together across the two configurations. This estimates
     the uncertainty in the within-sample difference conditional on the evaluated seeds.
 
-    Pairing matters most when the two configurations share their upstream behaviour. Two
+    Pairing matters most when the two configurations share their upstream behavior. Two
     aggregation rules over the same retrieved passages issue identical generation prompts and
     differ only in how the resulting answers are weighted, so their per-question outcomes are
     strongly correlated and an unpaired interval mostly measures variance the comparison does
@@ -1260,7 +1260,7 @@ def tab_main(rows: list[Row], out_dir: Path) -> Path:
 
 
 def tab_full(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
-    """Detailed behaviour of the two strongest configurations."""
+    """Detailed behavior of the two strongest configurations."""
     subset = [r for r in rows if r["dataset"] == dataset]
     values = seed_summary(subset, ["config", "attack"])
     conditional = seed_summary(
@@ -1291,7 +1291,7 @@ def tab_full(rows: list[Row], out_dir: Path, dataset: str = "squad") -> Path:
     return _write(
         out_dir / "tab_full.tex",
         latex_table(
-            f"Detailed behaviour of the layered defense on {DATASET_LABELS[dataset]}. "
+            f"Detailed behavior of the layered defense on {DATASET_LABELS[dataset]}. "
             "\\emph{Attributable ASR} restricts attack success to the queries this same "
             "configuration answered correctly with no adversary present; the distinction "
             "matters for the suppression attack, since a pipeline that was already going to "
@@ -1802,7 +1802,7 @@ def tab_local_paired(rows: Sequence[Row], out_dir: Path) -> Path | None:
         r"\end{tabularx}",
         r"\par\vspace{3pt}",
         r"\noindent\parbox{\linewidth}{\footnotesize Full minus none, so negative values "
-        r"favour the full stack. Brackets give 95\% question-cluster bootstrap intervals, "
+        r"favor the full stack. Brackets give 95\% question-cluster bootstrap intervals, "
         r"conditional on the included seeds. Attributable ASR uses each configuration's own "
         r"clean-correct baseline.}",
         r"\end{adjustwidth}",
@@ -2048,7 +2048,7 @@ def macros(
 
     # Adversary budget: the interesting quantity is how many corroborating documents the
     # adaptive attacker needs before the aggregation layer's redundancy bonus flips in their
-    # favour, so the extremes and the b=1/b=2 step are both emitted.
+    # favor, so the extremes and the b=1/b=2 step are both emitted.
     budget = studies.get("budget", [])
     if budget:
         for dataset in {r["dataset"] for r in budget}:
@@ -2066,7 +2066,7 @@ def macros(
                         if hit:
                             macro(f"budget{aname}{cname}{tag}B{n}", f"{hit[0]:.2f}")
 
-    # Compromised authorised publisher. The pair of interest is the same stack under the two
+    # Compromised authorized publisher. The pair of interest is the same stack under the two
     # corroboration units, so both are emitted at every budget, together with the abstention
     # that independence discounting trades for the reduction.
     compromise = studies.get("compromise", [])
@@ -2405,7 +2405,7 @@ def fig_diversity(rows: list[Row], out_dir: Path) -> Path:
         ax.set_xscale("log", base=2)
         ax.set_xticks(counts)
         ax.set_xticklabels([str(c) for c in counts])
-        ax.set_xlabel("Independent publishers in the corpus")
+        ax.set_xlabel("Authorized publishers contributing the corpus")
         ax.set_ylim(-0.04, 1.06)
         ax.set_title(DATASET_LABELS[dataset], fontsize=8.5)
     axes[0][0].set_ylabel("Attributable attack success rate")
@@ -2479,7 +2479,7 @@ def tab_compromise(
         r"\par\vspace{3pt}",
         r"\noindent\parbox{\linewidth}{\footnotesize Attack-attributable success with 95\% "
         r"question-cluster bootstrap intervals, under adversary $\mathcal{C}$, which holds one "
-        r"authorised publisher's signing key. Signed ingestion admits its documents by "
+        r"authorized publisher's signing key. Signed ingestion admits its documents by "
         r"construction, so the columns differ only in the unit agreement is counted over. "
         r"$n_0$ is the pooled clean-correct denominator across three seeds. Abstention on "
         r"attacked queries rises with the cap; it is reported in the text.}",
@@ -2558,7 +2558,7 @@ def tab_binding(rows: list[Row], out_dir: Path) -> Path:
         r"\par\vspace{3pt}",
         r"\noindent\parbox{\linewidth}{\footnotesize Attributable success with abstention "
         r"on attacked queries in parentheses, at five poisoned documents per target under "
-        r"adversary $\mathcal{C}$, which holds one authorised publisher's key. The author is "
+        r"adversary $\mathcal{C}$, which holds one authorized publisher's key. The author is "
         r"not covered by the signing envelope, so varying it costs the adversary nothing."
         + corpus_note + r" Pooled over three seeds.}",
     ]

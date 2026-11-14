@@ -1,97 +1,95 @@
-# Manuscript readiness and reviewer assessment
+# Manuscript readiness
 
-Reviewed on 18 October 2026 against the manuscript, experiment implementation, pinned results,
-and recent RAG-security literature. This is a revision assessment, not a prediction of editorial
-outcome.
+Updated 14 November 2026. This is a revision assessment, not a prediction of editorial outcome.
 
-## Current assessment
+## Target venue
 
-The manuscript is more accurate and reproducible than the earlier draft, but the scientific
-contribution still looks incremental for a competitive Q1 security journal. The paper now frames
-itself as a controlled component-level diagnosis, rather than a new defense or the first adaptive
-RAG evaluation. The remaining novelty problem is substantive: the adaptive threat, layered
-defenses, and poisoning benchmarks overlap with published and recent work, while this study does
-not reproduce those systems head to head or introduce a new defense, benchmark, or threat model.
+**IEEE Transactions on Information Forensics and Security (TIFS)**, Regular Paper.
 
-*Computers & Security* was removed from consideration after checking its [current scope](https://shop.elsevier.com/journals/computers-and-security/0167-4048),
-which excludes security of AI/ML/LLM systems. The *Journal of Information Security and
-Applications* is a more plausible subject fit, but its [guidance](https://shop.elsevier.com/journals/journal-of-information-security-and-applications/2214-2126)
-screens out incremental AI/ML applications.
-JISA is Q1 under current SJR/Scopus quartiles and Q2 in Journal Citation Reports. Confirm which
-quartile index is required before describing it as the target Q1 venue.
+Why this venue, after the *Expert Systems with Applications* scope rejection:
 
-## What changed in this revision
+- The paper's contribution is an information-security one: a threat-model extension
+  (compromised authorized signer), an authentication/provenance trust analysis, and an
+  aggregation rule keyed on verified signer identity. ESWA is an applied-AI venue, and the
+  paper does not present an expert system or an application study.
+- The two Elsevier security journals considered earlier are closed to it. *Computers &
+  Security* states that security of AI/ML systems (LLMs, federated learning) is out of scope,
+  and the publisher's listing for the *Journal of Information Security and Applications* says
+  the same.
+- TIFS's scope is "the sciences, technologies, and applications relating to information
+  forensics, information security, biometrics, surveillance and systems applications that
+  incorporate these features". Secondary sources list RAG-poisoning papers in TIFS (BadRAG,
+  vol. 20, 2025) and in IEEE TDSC (2026).
+- TIFS is Q1 in both SJR and JCR.
 
-- The title, abstract, introduction, and highlights state the measured scope and avoid a
-  first-of-its-kind, general-defense, or enterprise-scale claim.
-- Related work now discusses SafeRAG, the 2025 poisoning benchmark, RAGForensics, TriShieldRAG,
-  and *Through the Stealth Lens*. Comparisons are explicitly qualitative because those systems
-  were not reproduced.
-- The HMAC mechanism is described as symmetric message authentication under a protected
-  publisher/signing service. The paper no longer implies that document IDs establish independent
-  evidence or publishers.
-- Main results, supplementary figures, result macros, and the local-model table are generated
-  from the experiment artifacts and included by the Elsevier manuscript. The local-model result
-  remains explicitly exploratory.
-- The main-study uncertainty is a 2,000-replicate bootstrap over question clusters, conditional
-  on three seeds. The public artifact export keeps SHA-256 cluster IDs and omits query, gold, and
-  generated-answer text, while retaining target-answer token-F1 scores for sensitivity analysis.
-- The Elsevier source now uses space-fitted, generated tables for the main comparison,
-  provenance controls, and clean-utility results. The complete 23-page PDF was built against
-  `elsarticle.cls` 3.4 with the requested `5p,times` options.
-- Highlights were rewritten and are each within Elsevier's 85-character limit.
-- The class remains `\documentclass[5p,times]{elsarticle}`.
+Fallback with the same format family: *IEEE Transactions on Dependable and Secure Computing*.
 
-## Evidence and reproducibility limits
+**Not verified from this environment.** The publisher sites (IEEE Xplore, Signal Processing
+Society, ScienceDirect) and the reference-lookup services were unreachable, so the items below
+come from search-result summaries and must be confirmed on the journal's own pages before
+submission:
 
-- The main factorial uses a deterministic mock generator, three small corpora, one sentence
-  transformer retriever, exact inner-product search, and three seeds. It does not establish
-  production-scale behavior.
-- The pinned run completed all eight aggregate studies: 2,322 aggregate rows, plus 66,780
-  query-level outcomes for the main uncertainty and target-F1 analysis. Dataset and embedding
-  revisions are recorded in the artifact manifest. This is a reproducibility record, not evidence
-  of independent replication.
-- The local confirmation uses Qwen2.5 0.5B and Llama 3.2 1B in Q4_K_M, 100 SQuAD questions per
-  cell, and one seed. It shows a strong clean-accuracy cost and is not a hosted-model substitute.
-  No commercial hosted-model run was completed.
-- The adaptive campaign is a manually specified, one-factor-at-a-time diagnostic, not an
-  optimized or feedback-driven attacker. The attacker and defenses share one implementation.
-- Binary success is scored with normalized substring matching, which can count incidental answer
-  mentions. The main mock study now adds normalized target token-F1 as a graded sensitivity check;
-  exact match is still absent. The local-model confirmation exports only aggregates, so it has no
-  query-cluster intervals or target-F1 analysis.
-- The main comparison does not reproduce SafeRAG, RobustRAG, TrustRAG, TriShieldRAG, or the
-  attention-based detector from *Through the Stealth Lens* on a common dataset and threat model.
-- HMAC results assume the adversary cannot compromise or invoke the authorized publisher. The
-  experiment does not cover malicious authorized publishers, key rotation, freshness, replay,
-  or public-key alternatives.
+- the 13-page double-column limit for initial Regular Paper submissions (16 on revision), and
+  overlength charges above 10 published pages;
+- the current EDICS category list (choose the closest security/authentication category);
+- that the TIFS version of BadRAG and the 2026 TIFS paper "Provenance-Anchored Retrieval
+  Integrity" exist as described. The latter was found only through an IEEE DataPort dataset
+  page, is **not cited**, and should be read and cited or distinguished if it is real, because
+  it is the closest prior work in the target journal.
 
-## Highest-priority work before submission
+## What changed for this venue
 
-1. **Strengthen novelty.** Add a directly comparable baseline or a genuinely new mechanism or
-   benchmark contribution. A broader discussion alone will not resolve the incremental-work
-   concern.
-2. **Broaden model evidence.** Add more than two small local models and more than one seed; if a
-   hosted model is claimed, report the exact provider/model/version and a reproducible protocol.
-3. **Strengthen the adaptive evaluation.** Add an independently designed or optimized attacker,
-   limited-target campaigns, and an implementation-independent replication.
-4. **Complete metric validation.** Add exact match and target-F1 results to the real-model
-   confirmation, preferably with query-level outputs and cluster intervals. The current model
-   follow-up is aggregate-only, and the main study's token-F1 metric remains a sensitivity
-   measure alongside substring ASR.
-5. **Confirm journal requirements and author declarations.** Authors must verify funding,
-   conflicts of interest, CRediT roles, acknowledgements, the AI-assisted-writing declaration,
-   and the requested quartile index. The current AI statement says all authors reviewed and
-   edited the text; they must confirm that is accurate. These details cannot be inferred from
-   the repository and have not been invented.
-6. **Archive the final artifact.** A GitHub commit is useful for review; a DOI-backed release
-   (for example, through Zenodo) is preferable for a journal submission.
+- Class changed from `elsarticle` to `IEEEtran` (journal), numeric IEEE citations, IEEE
+  keywords, author block in the manuscript (TIFS review is single-anonymous). 12 pages.
+- Elsevier-only items removed: highlights, separate title page, declaration of interest and
+  ORCID files, `elsarticle` class files. ORCIDs are entered in the submission system.
+- The paper is reorganized around the security thesis. The compromised-publisher adversary,
+  the per-principal cap, its bound (Property 1), and the binding attack are now the core; the
+  layered ablation is condensed into one subsection as the unauthorized-writer baseline.
+- Notation repaired: the principal is `pr(j)` throughout (the previous draft used both `pi`
+  and `kappa`, and `kappa` also denoted the HMAC key).
+- One text/table disagreement fixed: the previous draft said aggregation alone lowered
+  adaptive attributable success on HotpotQA; Table II shows 0.97 -> 0.98.
+- Related work adds RAGShield (arXiv:2604.00387v1), a provenance-based RAG defense that
+  itself reports residual insider success, and the Sybil attack as the classical statement of
+  the corroboration problem. The claim that prior provenance work ignores insiders was
+  softened accordingly.
+- Figure legends say "per-principal cap" instead of "independence discounting".
+- AI-assistance disclosure moved to the Acknowledgment section, as IEEE requires.
+- The 42-row served-model table, the dataset table, the heatmap and the ingestion-ladder
+  figure are no longer in the main paper; their numbers are quoted in the text and the files
+  remain as supplementary material.
 
-## Literature overlap to cite and compare directly
+## Review risks that formatting does not fix
 
-- SafeRAG, ACL 2025: <https://aclanthology.org/2025.acl-long.230/>.
-- “Benchmarking Poisoning Attacks against Retrieval-Augmented Generation,” arXiv 2505.18543:
-  <https://arxiv.org/abs/2505.18543>.
-- RAGForensics, WWW 2025: <https://doi.org/10.1145/3696410.3714756>.
-- TriShieldRAG, 2026 preprint: <https://arxiv.org/abs/2607.23838>.
-- “Through the Stealth Lens,” ICML 2026: <https://proceedings.mlr.press/v306/choudhary26b.html>.
+These are the likely grounds for rejection at a venue of this standard. None could be
+addressed here without new experiments.
+
+1. **Deterministic generator.** The headline numbers come from a mock generator that is
+   credulous by construction. The served-model confirmation is two 7-8B models, 100
+   questions, one seed.
+2. **The cap is unconfirmed on served models** (4 discordant pairs of 200, McNemar p = 0.125),
+   and the compromised-publisher configuration has never been run on a served model.
+3. **No reproduced baselines.** RobustRAG, TrustRAG and RAGShield are not reimplemented; the
+   identifier-counting control arm is the paper's own rule.
+4. **Scale.** Corpora of 30 to 1,999 documents; one retriever.
+5. **Partial effect.** With the cap, 0.59 of attacks still succeed on SQuAD at b = 5.
+
+Highest-value additions before submitting: run the compromised-publisher study on served
+models with several seeds; add RobustRAG's keyword/decoding aggregation as an external
+baseline arm; evaluate on a larger corpus (e.g. Natural Questions).
+
+## Repository gaps
+
+- `tables/tab_binding.tex` has no source file in `paper-submission/artifacts/`
+  (`binding.jsonl` is absent), so Table IV cannot be regenerated from the public bundle.
+- `ragsec figures` needs the `datasets` extra and network access to rebuild the dataset table;
+  Figures 4 and 5 were regenerated directly from the artifacts for the legend change.
+
+## Author actions before submission
+
+- Confirm the items under "Not verified" above.
+- Confirm funding, competing-interest and authorship statements, and that the AI-use
+  disclosure is accurate.
+- Archive the artifact with a DOI (e.g. Zenodo) and cite it in the paper.
+- IEEE prefers institutional e-mail addresses; the second author's is a personal address.

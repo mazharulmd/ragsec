@@ -225,22 +225,21 @@ for c in configs/ablation_*.yaml; do ragsec evaluate "$c"; done
 
 ## The paper
 
-`paper-submission/` holds the revised manuscript, formatted for the *Journal of Information
-Security and Applications* (Elsevier):
+`paper-submission/` holds the manuscript, formatted as a Regular Paper for *IEEE Transactions
+on Information Forensics and Security* (TIFS):
 
 ```
-paper-submission/MainPaper.tex    the manuscript (elsarticle class)
-paper-submission/MainPaper.pdf    compiled 5p, Times two-column copy
-paper-submission/Highlights.tex   Elsevier highlights, uploaded as a separate item
-paper-submission/References.bib   bibliography for the manuscript
+paper-submission/MainPaper.tex    the manuscript (IEEEtran journal class)
+paper-submission/MainPaper.pdf    compiled copy, 12 double-column pages (limit: 13)
+paper-submission/CoverLetter.tex  cover letter
+paper-submission/References.bib   bibliography (IEEEtran style)
 paper-submission/tables/          generated LaTeX tables and result macros
 paper-submission/figures/         generated PDF figures
 paper-submission/artifacts/       compact results used to rebuild the report
 ```
 
-The Elsevier class, numeric bibliography style, and algorithm packages used by this manuscript
-are included in `paper-submission/` with their upstream copyright and license notices. A TeX
-distribution with the other standard LaTeX dependencies is still required:
+`IEEEtran.cls` and `IEEEtran.bst` ship with TeX Live (`texlive-publishers`); the algorithm
+packages are included here with their license notices.
 
 ```bash
 cd paper-submission && pdflatex MainPaper && bibtex MainPaper && pdflatex MainPaper && pdflatex MainPaper
@@ -249,22 +248,21 @@ cd paper-submission && pdflatex MainPaper && bibtex MainPaper && pdflatex MainPa
 The authenticated-ingestion study creates a fresh 256-bit HMAC key at runtime. Never place keys in
 YAML configs or committed source.
 
-The manuscript uses Elsevier's `\documentclass[5p,times]{elsarticle}` layout and numeric
-citations; wide tables and figures span both columns. JISA's [current scope](https://shop.elsevier.com/journals/journal-of-information-security-and-applications/2214-2126)
-is a better fit than *Computers & Security*, whose [stated scope](https://shop.elsevier.com/journals/computers-and-security/0167-4048)
-excludes security of AI/ML/LLM systems. The venue is a candidate, not an acceptance prediction.
-JISA is Q1 in current SJR/Scopus metrics but Q2 in Journal Citation Reports; confirm which
-quartile index the target institution requires before submission.
+The manuscript uses Figures 1, 4 and 5 and Tables `tab_main`, `tab_compromise` and
+`tab_binding`; the remaining generated tables and figures are supplementary material.
 
 ### Submission history
 
 | Venue | Outcome |
 |---|---|
 | MDPI *Information* (information-4616315), submitted 23 Sep 2026 | Desk-rejected without review, 26 Sep 2026 |
-| *Computers & Security* | Removed from consideration after checking its current scope |
-| *Journal of Information Security and Applications* | Current candidate; not submitted |
+| *Computers & Security* | Not submitted: its scope excludes security of AI/ML/LLM systems |
+| *Journal of Information Security and Applications* | Not submitted: the publisher's listing places security of AI/ML systems out of scope |
+| *Expert Systems with Applications* | Rejected as outside the journal's aims and scope |
+| *IEEE Transactions on Information Forensics and Security* | Current target; not submitted. See `PAPER_READINESS.md` |
 
-The MDPI-formatted version and its compiled PDF are in the git history at commit `35304b3`.
+Earlier formats are in the git history: MDPI at commit `35304b3`, Elsevier (`elsarticle`) at
+`b2b0670`.
 
 ### Where the numbers come from
 
@@ -304,7 +302,7 @@ ragsec/defenses    the four defense layers
 ragsec/eval        datasets, metrics, experiment runner, experiment suite, report generator
 ragsec/cli.py      command-line entry point
 configs/           baseline, full defense, signed ingestion, per-layer ablations
-paper-submission/  authoritative Elsevier source, generated tables, figures, and artifacts
+paper-submission/  authoritative IEEE-format source, generated tables, figures, and artifacts
 paper/             previous report-output directory
 results/paper/     raw suite output (JSONL)
 tests/             pytest suite
