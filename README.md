@@ -231,6 +231,8 @@ on Information Forensics and Security* (TIFS):
 ```
 paper-submission/MainPaper.tex    the manuscript (IEEEtran journal class)
 paper-submission/MainPaper.pdf    compiled copy, 12 double-column pages (limit: 13)
+paper-submission/Supplement.tex   supplemental tables and figures (4 pages)
+paper-submission/PriorSubmissions.tex  statement on earlier rejections (authors must add the decision text)
 paper-submission/CoverLetter.tex  cover letter
 paper-submission/References.bib   bibliography (IEEEtran style)
 paper-submission/tables/          generated LaTeX tables and result macros

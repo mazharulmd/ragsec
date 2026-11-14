@@ -59,26 +59,26 @@ Authorized Publisher}
 \maketitle
 
 \begin{abstract}
-Retrieval-augmented generation (RAG) places a document pipeline inside a language model's
-trust boundary, so a party able to write to the knowledge base can shape the answers users
-receive. Authenticating documents at ingestion is the usual remedy, and under its intended
-adversary it works: it reduces the attack-attributable success of a
-defense-aware poisoning campaign to \casrAdaptiveHotpotqafullsigned{} on HotpotQA, where
-content filtering and robust aggregation leave \casrAdaptiveHotpotqafull{}. That protection
-assumes every holder of a valid signing key is honest. We extend the adversary model with an
-authorized but compromised publisher, whose documents verify by construction. Attributable
-success under authenticated ingestion then rises from \casrAdaptiveSquadfullsigned{} to
-\compromiseSignedSquadBThree{} on SQuAD and from \casrAdaptiveHotpotqafullsigned{} to
-\compromiseSignedHotpotqaBThree{} on HotpotQA. The remaining exposure lies in the unit over
-which answer aggregation counts corroboration: document identifiers are chosen by the
-submitter, so one key holder uploading $b$ paraphrases counts as $b$ witnesses. We propose a
-per-principal contribution cap that attributes each passage to the identity whose key the
-ingestion service verified and lets each principal contribute only its strongest passage. Including
-any uploader-chosen attribute in the principal returns the rule to identifier counting. The cap lowers attributable success from \compromiseSignedSquadBFive{} to
-\compromiseSignedIndependentSquadBFive{} on SQuAD at five poisoned documents per target at
-unchanged clean accuracy and higher abstention. Its benefit is absent for
-single-document attacks and narrows when poison displaces genuine evidence at retrieval, and
-on two locally served models the effect is directional only.
+Retrieval-augmented generation places a document pipeline inside a language model's trust
+boundary, so a party able to write to the knowledge base can shape the answers users receive.
+Authenticating documents at ingestion is the usual remedy, and against its intended adversary
+it reduces the attack-attributable success of a defense-aware poisoning campaign to
+\casrAdaptiveHotpotqafullsigned{} on HotpotQA, where content filtering and robust aggregation
+leave \casrAdaptiveHotpotqafull{}. That protection assumes every holder of a valid signing key
+is honest. We extend the adversary model with an authorized but compromised publisher, whose
+documents verify by construction. Attributable success under authenticated ingestion
+rises from \casrAdaptiveSquadfullsigned{} to \compromiseSignedSquadBThree{} on SQuAD and from
+\casrAdaptiveHotpotqafullsigned{} to \compromiseSignedHotpotqaBThree{} on HotpotQA. The
+remaining exposure lies in the unit over which answer aggregation counts corroboration:
+document identifiers are chosen by the submitter, so one key holder uploading several
+paraphrases counts as several witnesses. We propose a per-principal contribution cap that
+attributes each passage to the identity whose key the ingestion service verified and lets each
+principal contribute only its strongest passage. Including any uploader-chosen attribute in
+the principal returns the rule to identifier counting. The cap lowers attributable success
+from \compromiseSignedSquadBFive{} to \compromiseSignedIndependentSquadBFive{} on SQuAD at five
+poisoned documents per target, at unchanged clean accuracy and higher abstention. Its benefit
+is absent for single-document attacks and narrows when poison displaces genuine evidence at
+retrieval, and on two served models the effect is directional only.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -160,7 +160,7 @@ Our contributions are as follows.
       narrowing effect at high budgets, no dependence on publisher diversity, and an abstention
       cost on attacked queries.
 \item A reproducible evaluation of four switchable controls against five attack families on
-      three corpora, with a confirmation on two locally served models that we report as
+      three corpora, with a confirmation on two served models that we report as
       directional and not as established.
 \end{itemize}
 
@@ -616,7 +616,8 @@ threshold sweeps, over-retrieval, the ingestion-control ladder, and generator ha
 
 The code, configurations, seeds, model and dataset revisions, and the aggregate and hashed
 per-query outcomes are released; tables, figures, and the numeric macros in this text are
-regenerated from that bundle.
+regenerated from that bundle. The supplemental material gives the corpus statistics, the
+supporting ablations, and the full served-model results as Tables~V--X and Figs.~4 and~5.
 
 \section{Results}
 \label{sec:results}
@@ -649,8 +650,10 @@ competing groups have similar weight. Monitoring alone changes nothing
 retrieval filter separates static payloads almost perfectly (area under the ROC curve
 \detectionAurocPoisonedragSquad{} for A1 on SQuAD) and fails on A5
 (\detectionAurocAdaptiveSquad{}), with a false-positive rate of \detectionFprSquad{} on clean
-traffic. Removing one technique at a time shows that the payload rewriting (E1, E2) is what
-defeats the filter. Aggregation alone does not lower attributable A5 success on any corpus
+traffic. Removing one technique at a time (Table~VI of the supplement) shows that three are
+necessary: the rewriting (E1, E2) defeats the filter and the claimed source (E5) passes the
+trust threshold. Padding, dilution, and identifier diversification (E3, E4, E6) are not
+needed against this stack. Aggregation alone does not lower attributable A5 success on any corpus
 (\casrAdaptiveSquadLThree{} on SQuAD, \casrAdaptiveHotpotqaLThree{} on HotpotQA) and raises it
 from \casrAdaptiveToynone{} to \casrAdaptiveToyLThree{} on the toy corpus, because identifier
 counting credits the adversary's $b$ distinct identifiers as support. Mean target token F1 on SQuAD is \targetTokenFAdaptiveSquadNone{} undefended and

@@ -1,0 +1,60 @@
+\documentclass[journal]{IEEEtran}
+
+%% Supplemental material for the TIFS submission. Tables and figures are numbered
+%% consecutively with the manuscript (which ends at Table IV and Fig. 3), as the
+%% journal requires. Recommended limit: six double-column pages.
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{changepage}
+\newlength{\extralength}
+\setlength{\extralength}{0pt}
+\input{tables/macros.tex}
+
+\begin{document}
+
+\title{Supplemental Material for ``Knowledge-Base Poisoning of Retrieval-Augmented Generation
+Under a Compromised Authorized Publisher''}
+\author{Md Mazharul Islam, Mohona Islam Nidra, and Koushik Saha}
+\maketitle
+
+\setcounter{table}{4}
+\setcounter{figure}{3}
+
+This supplement reports the supporting studies that the manuscript summarizes in
+Section~VII-A and the full served-model results of Section~VII-E. All values are regenerated
+from the released artifact bundle. Results other than Table~X use the deterministic generator
+and adversary $\mathcal{U}$, the unauthorized writer.
+
+Table~V lists the evaluation corpora. Fig.~4 shows attack success for every configuration and
+attack, and Fig.~5 and Table~VIII the ingestion-control ladder. Table~VI removes one evasion
+technique at a time from the rewriting adversary. Table~VII gives the retrieval filter's
+detection quality. Table~IX separates the contribution of generator susceptibility. Table~X
+gives the seven-configuration served-model results for Qwen2.5~7B and Llama~3.1~8B on 100
+SQuAD questions with one seed.
+
+\input{tables/tab_datasets.tex}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig2_asr_heatmap.pdf}
+\caption{Attack success by configuration and attack.}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig3_provenance.pdf}
+\caption{Ingestion controls against static and rewritten poisoning.}
+\end{figure*}
+
+\input{tables/tab_evasion.tex}
+\input{tables/tab_detection.tex}
+\input{tables/tab_provenance.tex}
+\input{tables/tab_generator.tex}
+\input{tables/tab_local_model.tex}
+
+\end{document}

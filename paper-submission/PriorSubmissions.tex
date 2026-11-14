@@ -1,0 +1,80 @@
+%% Supporting document required by the IEEE Signal Processing Society for a manuscript that
+%% was previously rejected by any journal: verbatim quotations of the relevant parts of every
+%% earlier decision, how each was addressed, and, for a scope rejection, why the manuscript is
+%% in scope here. Upload as a supporting document and answer "resubmission of an earlier
+%% rejected manuscript" in the submission form.
+%%
+%% THE QUOTATIONS BELOW MUST BE PASTED IN BY THE AUTHORS FROM THE DECISION E-MAILS.
+%% Nothing in the \todo{} boxes may be paraphrased or reconstructed from memory.
+
+\documentclass[11pt]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{xcolor}
+\pagestyle{empty}
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+\newcommand{\todo}[1]{\fcolorbox{red}{yellow!20}{\parbox{0.95\linewidth}{\textbf{TO COMPLETE:} #1}}}
+
+\begin{document}
+
+\begin{center}
+{\large\bfseries Statement on previous submissions}\\[4pt]
+\emph{Knowledge-Base Poisoning of Retrieval-Augmented Generation Under a Compromised
+Authorized Publisher}
+\end{center}
+
+Earlier versions of this work were submitted to two journals. Neither was sent for external
+review, so there are no reviewer reports. The editorial decisions are quoted in full below.
+
+\section*{1. MDPI \emph{Information} (manuscript information-4616315)}
+
+Submitted 23 September 2026; returned by the editorial office without external review on
+26 September 2026.
+
+\textbf{Decision, verbatim.}
+
+\todo{Paste the complete text of the MDPI decision e-mail, including the stated reason.}
+
+\textbf{How it has been addressed.}
+
+\todo{One or two sentences that answer the stated reason. If the reason was scope, say so
+here; a scope rejection does not count toward the single permitted resubmission.}
+
+The manuscript submitted here differs substantially from that version. That version presented
+a four-layer defense architecture and its evaluation under a rewriting adversary. The present
+manuscript adds the compromised-authorized-publisher adversary, the per-principal contribution
+cap and its bound, the attack on the binding of the grouping attribute, the publisher-diversity
+control, and a confirmation on two served language models, and it reports uncertainty with
+question-cluster bootstrap intervals.
+
+\section*{2. \emph{Expert Systems with Applications} (Elsevier)}
+
+\todo{Manuscript number, submission date and decision date.}
+
+Returned by the editor as outside the journal's aims and scope, without external review.
+
+\textbf{Decision, verbatim.}
+
+\todo{Paste the complete text of the decision e-mail.}
+
+\textbf{Why the manuscript is in scope for IEEE Transactions on Information Forensics and
+Security.}
+
+\emph{Expert Systems with Applications} publishes work on the design and application of expert
+and intelligent systems. This manuscript does not propose or apply such a system. Its subject
+is information security: the trust assumption behind cryptographic authentication of documents
+entering a retrieval pipeline. It contributes (i) an adversary model in which an authorized
+signer is compromised, (ii) the measurement that authenticated ingestion gives no protection
+against that adversary, (iii) an aggregation rule that counts corroboration over the signer
+identity verified by the ingestion service, with a stated bound on the weight one principal
+can contribute, and (iv) an attack on the binding of that identity showing that an
+uploader-chosen attribute, even one covered by the signature, cannot define a principal. These
+are questions of authentication, provenance, and resistance to Sybil-style fabrication of
+support, which fall within information security as covered by the Transactions. The language
+model is the system being protected and is not the object of the contribution.
+
+The manuscript was reorganized for this submission so that these security contributions are
+its core, and the earlier layered-defense ablation is reduced to the baseline against which
+they are measured.
+
+\end{document}

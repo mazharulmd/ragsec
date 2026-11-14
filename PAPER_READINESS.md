@@ -24,18 +24,46 @@ Why this venue, after the *Expert Systems with Applications* scope rejection:
 
 Fallback with the same format family: *IEEE Transactions on Dependable and Secure Computing*.
 
-**Not verified from this environment.** The publisher sites (IEEE Xplore, Signal Processing
-Society, ScienceDirect) and the reference-lookup services were unreachable, so the items below
-come from search-result summaries and must be confirmed on the journal's own pages before
-submission:
+## Checked against the journal's Information for Authors (supplied by the author, 14 Nov 2026)
 
-- the 13-page double-column limit for initial Regular Paper submissions (16 on revision), and
-  overlength charges above 10 published pages;
-- the current EDICS category list (choose the closest security/authentication category);
-- that the TIFS version of BadRAG and the 2026 TIFS paper "Provenance-Anchored Retrieval
-  Integrity" exist as described. The latter was found only through an IEEE DataPort dataset
-  page, is **not cited**, and should be read and cited or distinguished if it is real, because
-  it is the closest prior work in the target journal.
+| Requirement | Status |
+|---|---|
+| Regular Paper, at most 13 double-column pages at 10 pt, everything included | Met: 12 pages |
+| IEEE template | Met: `IEEEtran` journal class |
+| Abstract 150-250 words, self-contained, no abbreviations, equations, footnotes or references | Met after revision: the abbreviation "RAG" and inline math were removed |
+| Problem, contribution, significance, closest literature, what is new | Present in Sections I and II |
+| Supplemental material, at most six pages, numbered consecutively with the manuscript | `Supplement.tex`, 4 pages, Tables V-X and Figs. 4-5 |
+| Statement on previously rejected manuscript, with verbatim decisions and a scope motivation | `PriorSubmissions.tex` drafted; **the verbatim decision text must be pasted in by the authors** |
+| ORCID for every author | Available; enter in the Author Portal |
+| EDICS category | To choose at submission; see below |
+| List of posted preprints with URLs | Authors to supply; none is known to this repository |
+| Single-anonymized review | Author block is in the manuscript |
+
+**Resubmission rule.** A manuscript rejected by any journal for a reason other than scope may
+be resubmitted only once. The ESWA rejection was for scope and does not count. Whether the
+MDPI desk rejection counts depends on its stated reason, which is not recorded in this
+repository. If it was not a scope rejection, this submission is the single permitted
+resubmission, so it should not be spent before the review risks below are reduced.
+
+**Charges.** Published pages beyond ten are billed at USD 220 each and cannot be waived; at
+12 pages that is USD 440 if the accepted version keeps this length. Voluntary charges
+(USD 110 per page for the first ten) are optional. Revisions may grow to 16 pages, which
+raises the mandatory charge.
+
+**Immediate-rejection grounds named by the journal** are lack of novelty, insufficient
+experimental data, poor English, and insufficient citations. The second is this manuscript's
+main exposure; see "Review risks".
+
+**EDICS.** The unified list could not be opened from this environment. A copy about three
+years old lists IFS-CYB (cybersecurity) and IFS-APC (applied cryptography) among the
+Information Forensics and Security categories; IFS-CYB looks closest. Confirm on the current
+list.
+
+**Still not verified.** The reference-lookup services and publisher sites were unreachable.
+A 2026 TIFS paper titled "Provenance-Anchored Retrieval Integrity" was found only through an
+IEEE DataPort dataset page. It is **not cited** and should be read and cited or distinguished
+if it exists, because it would be the closest prior work in the target journal. The two added
+references (RAGShield, the Sybil attack) were not checked against a bibliographic database.
 
 ## What changed for this venue
 
@@ -48,17 +76,17 @@ submission:
   layered ablation is condensed into one subsection as the unauthorized-writer baseline.
 - Notation repaired: the principal is `pr(j)` throughout (the previous draft used both `pi`
   and `kappa`, and `kappa` also denoted the HMAC key).
-- One text/table disagreement fixed: the previous draft said aggregation alone lowered
-  adaptive attributable success on HotpotQA; Table II shows 0.97 -> 0.98.
+- Two text/table disagreements fixed. The previous draft said aggregation alone lowered
+  adaptive attributable success on HotpotQA; Table II shows 0.97 -> 0.98. It also said that
+  dropping source spoofing changes little; the evasion ablation shows it removes the attack.
 - Related work adds RAGShield (arXiv:2604.00387v1), a provenance-based RAG defense that
   itself reports residual insider success, and the Sybil attack as the classical statement of
   the corroboration problem. The claim that prior provenance work ignores insiders was
   softened accordingly.
 - Figure legends say "per-principal cap" instead of "independence discounting".
 - AI-assistance disclosure moved to the Acknowledgment section, as IEEE requires.
-- The 42-row served-model table, the dataset table, the heatmap and the ingestion-ladder
-  figure are no longer in the main paper; their numbers are quoted in the text and the files
-  remain as supplementary material.
+- The 42-row served-model table, the dataset table, the supporting ablation tables, the
+  heatmap and the ingestion-ladder figure moved to `Supplement.tex`.
 
 ## Review risks that formatting does not fix
 
